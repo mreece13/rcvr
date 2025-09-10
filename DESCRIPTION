@@ -29,3 +29,5 @@ Imports:
     tibble,
     tidyr,
     tidyselect
+URL: https://github.com/mreece13/rcvr
+BugReports: https://github.com/mreece13/rcvr/issues
