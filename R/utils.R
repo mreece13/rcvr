@@ -1,26 +1,39 @@
 # unneeded columns to drop from the data
 rcvr_DROP_COLS <- c(
-  "Cast Vote Record", "Ballot Style", "RowNumber",
-  "BoxID", "BoxPosition", "BallotID", "BallotStyleID",
-  "PrecinctStyleName", "ScanComputerName", "Status", "Remade",
-  "PrecinctStyleName (Redacted to Protect Voter Privacy)",
-  "CvrNumber", "TabulatorNum", "Batch Id", "Record Id",
-  "ImprintedId", "BallotType", "CountingGroup", "Precinct Portion",
-  "Dummy Row Number", "Row Number", "Image Path", "Session Type", "Cast.Vote.Record",
-  "Ballot.Style", "Voter Flag", "Modified", "Card Info", "Pdf Name", "Unique Voting Identifier",
-  "Voting Session Identifier", "CVRNumber", "BallotTypeId",
-  "TabulatorId", "BatchId", "RecordId", "Tabulator Name", "Is Current",
-  "Box Id", "Box Position", "Ballot Id", "Ballot Style Id", "Scan Computer Name",
-  "ballot_style", "ballot_style2", "Batch", "Ballot Status"
+  "Cast Vote Record", "RowNumber", "CvrNumber", "CVRNumber", "Cvr Number", "Cast.Vote.Record",
+  "BallotID", "Ballot Id", "Dummy Row Number", "Row Number", "Unique Voting Identifier", 
+  "Ballot Style", "BallotStyleID", "ballot_style2", "Ballot Style Id", "Ballot.Style", 
+  "Ballot Type", "BallotType", "BallotTypeId",
+  "Ballot Status", 
+  "BoxID", "Box Id", "BoxPosition", "Box Position", 
+  "PrecinctStyleName", "PrecinctStyleName (Redacted to Protect Voter Privacy)",
+  "CountingGroup", "Counting Group",
+  "TabulatorNum", "Tabulator Num", "Tabulator Name", "TabulatorId", 
+  "Batch Id", "BatchId", "Batch", 
+  "Record Id", "RecordId", 
+  "ImprintedId", "Imprinted Id",
+  "Image Path", 
+  "Session Type", 
+  "Voter Flag", 
+  "Modified", 
+  "Card Info", 
+  "Pdf Name", 
+  "ScanComputerName", "Scan Computer Name",
+  "Status", 
+  "Remade",
+  "Voting Session Identifier", 
+  "Is Current"
 )
 
 # various permutations of a label that the cell is redacted
-rcvr_REDACT_NAMES = c("X", "redacted for voter privacy", "REDACTED", "Redacted", "*", "redacted")
+rcvr_REDACT_NAMES = c("X", "redacted for voter privacy", "REDACTED", "Redacted", "*", "redacted", "Redacted per 24-27-205.5 (4)(b)(III) C.R.S.")
 
 # various permutations of the precinct column name
 rcvr_RENAME_COLS <- c(
   ballot_style = "Ballot Style",
   ballot_style = "BallotStyle",
+  ballot_style = "BallotStyleID",
+  ballot_style = "BallotType",
   precinct = "Precinct Portion",
   precinct = "PrecinctPortionID",
   precinct = "Precinct",
@@ -34,7 +47,8 @@ rcvr_RENAME_COLS <- c(
   precinct = "precinct_number",
   precinct = "PRECINCT CODE",
   precinct = "PRECINCT NAME",
-  precinct = "PrecinctPortion"
+  precinct = "PrecinctPortion",
+  precinct = "PrecinctStyleName"
 )
 
 #' Check if delimited file has an unconventional header
@@ -47,7 +61,7 @@ is_header <- function(path) {
   # get the top-left cell's contents
   if (stringr::str_detect(path, "csv$|CSV$")) {
     rlang::check_installed("data.table", reason = "to read CSV files")
-    d <- data.table::fread(path, nrows=1, select=1)[[1]]
+    d <- data.table::fread(path, nrows=1, select=1, header=FALSE)[[1]]
   } else if (stringr::str_detect(path, "xls$|xlsx$|XLS$|XLSX$")) {
     rlang::check_installed("readxl", reason = "to read Excel files")
     d <- readxl::read_excel(path, range = "A1", col_names = FALSE, .name_repair = "unique_quiet") |> dplyr::pull()
@@ -117,7 +131,8 @@ header_processor <- function(path, n = Inf) {
     iconv(to = "UTF-8", sub = "") |>
     stringr::str_remove_all("^V\\d+") |>
     stringr::str_remove_all("^\\|\\|") |>
-    stringr::str_remove_all("^\\|\\|")
+    stringr::str_remove_all("^\\|\\|") |> 
+    make.unique(sep = "_")
 
   df[-c(bad_rows, 1, 2), ]
 

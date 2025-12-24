@@ -1,6 +1,6 @@
 gen_metadata <- function(df, type, path, verbose=FALSE){
 
-  if (verbose) cli::cli_alert_info("Generating metadata")
+  if (verbose) cli::cli_alert_info("Generating metadata for {.file {type}} CVR format")
 
   # pattern generator for party detection
   gen_patterns <- function(strings) {
@@ -41,7 +41,7 @@ gen_metadata <- function(df, type, path, verbose=FALSE){
     return(ranges)
   }
 
-  if (type == "DELIM" | type == "MULTI-DELIM"){
+  if (type %in% c("DELIM", "DELIM-MULTI")){
 
     meta = df |>
       dplyr::filter(!(contest %in% c(rcvr_DROP_COLS, rcvr_RENAME_COLS))) |>

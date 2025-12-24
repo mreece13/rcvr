@@ -40,13 +40,21 @@ clean_cvr <- function(
     # is the ballot fragmented across rows?
     if ("ballot_style" %in% colnames(raw)){
 
-      if (dplyr::distinct(raw, ballot_style) |> dplyr::pull() |> stringr::str_detect("\\[\\d+\\]$") |> sum() > 0) {
+      foundbrackets = dplyr::distinct(raw, ballot_style) |> dplyr::pull() |> stringr::str_detect("\\[\\d+\\]$") |> sum() > 0
+      firstcol = setdiff(colnames(raw), c(rcvr_DROP_COLS, "cvr_id", "precinct", "ballot_style"))[1]
+      foundspaces = raw[[firstcol]] |> table() |> as.data.frame() |> dplyr::mutate(p = Freq/sum(Freq)) |> dplyr::filter(Var1 == "") |> dplyr::pull(p) > 0.1
+      
+      if (isTRUE(foundbrackets) | isTRUE(foundspaces)) {
 
         cli::cli_warn("{.file {path}} appears to contain fragmented ballots (where the ballot is split across multiple rows). We attempt to repair this by merging rows together using an intelligent strategy, but any further analysis should be taken with caution.")
 
+        tokeep = raw[[firstcol]] != ""
+
         base = raw |>
           dplyr::mutate(
-            ballot_style2 = stringr::str_remove(ballot_style, " \\[\\d+\\]$")
+            dplyr::across(tidyselect::everything(), ~dplyr::na_if(.x, "")),
+            ballot_style2 = stringr::str_remove(ballot_style, " \\[\\d+\\]$"),
+            .before = ballot_style
           ) |>
           dplyr::group_by(ballot_style2) |>
           tidyr::fill(
@@ -55,13 +63,7 @@ clean_cvr <- function(
           ) |>
           dplyr::ungroup()
 
-        tokeep = base |>
-          dplyr::count(ballot_style2, ballot_style, sort=TRUE) |>
-          dplyr::filter(n == max(n), .by = ballot_style2) |>
-          dplyr::slice_head(n=1, by = ballot_style2) |>
-          dplyr::select(ballot_style)
-
-        raw = dplyr::semi_join(base, tokeep, dplyr::join_by("ballot_style"))
+        raw = base[tokeep, ]
 
       }
 
@@ -89,13 +91,37 @@ clean_cvr <- function(
 
     colnames(raw) <- iconv(colnames(raw), to = "UTF-8", sub = "")
 
-    # rename some columns with a fuzzy match
-    dplyr::rename(raw, tidyselect::any_of(rcvr_RENAME_COLS))
+    # Select one matching candidate for each canonical name defined in
+    # `rcvr_RENAME_COLS`. We pick the first candidate that appears in the
+    # file (priority determined by the ordering in `rcvr_RENAME_COLS`). This
+    # ensures only one `ballot_style` column and one `precinct` column are
+    # chosen when multiple variants exist.
+    for (canonical in unique(names(rcvr_RENAME_COLS))) {
+      candidates <- rcvr_RENAME_COLS[names(rcvr_RENAME_COLS) == canonical]
+      found <- candidates[candidates %in% colnames(raw)]
+      if (length(found) > 0) {
+        old_name <- found[1]
+        if (old_name != canonical) {
+          colnames(raw)[colnames(raw) == old_name] <- canonical
+        }
+      } else {
+        # If no candidates found, create an empty column
+        raw[[canonical]] <- NA_character_
+      }
+    }
+
+    # dplyr::mutate(
+    #   raw,
+    #   precinct = as.character(precinct)
+    # ) |> 
+    #   dplyr::bind_rows(tibble::tibble(precinct = character(), ballot_style = character()))
+
+    return(raw)
 
   }
   clean_delim <- function(raw){
 
-    raw = fix_fragmentation(raw)
+    raw = fix_fragmentation(raw) |> dplyr::select(-tidyselect::any_of(c("ballot_style", "ballot_style2")))
 
     d <- raw |>
       # drop all of the unnecessary columns
@@ -105,10 +131,11 @@ clean_cvr <- function(
         "cvr_id" = 1:dplyr::n()
       ) |>
       tidyr::pivot_longer(
-        cols = -tidyselect::any_of(c("state", "county_name", "cvr_id", "precinct")),
+        cols = -tidyselect::any_of(c("cvr_id", "precinct", "ballot_style")),
         names_to = "contest",
         values_to = "raw_candidate",
-        values_drop_na = TRUE
+        values_drop_na = TRUE,
+        values_transform = as.character
       ) |>
       tidyr::separate_wider_delim(cols = contest, delim = "||", names = c("contest", "candidate", "raw_party"), too_few = "align_start") |>
       # some rows are aggregated values (CvrNumber=`Redacted and Aggregated...`), need to drop these rows
@@ -131,7 +158,7 @@ clean_cvr <- function(
         raw_candidate = dplyr::case_when(
           raw_candidate %in% rcvr_REDACT_NAMES ~ NA_character_,
           is.na(raw_candidate) ~ "undervote",
-          .default = dplyr::coalesce(candidate, raw_candidate)
+          .default = dplyr::coalesce(candidate, as.character(raw_candidate))
         ),
         candidate = NULL
       )
@@ -140,13 +167,10 @@ clean_cvr <- function(
     if (isTRUE(metadata_only)) return(metadata)
 
     clean <- d |>
-      mutate(
-        across(c(contest, raw_candidate, raw_party), ~na_if(.x, ""))
+      dplyr::mutate(
+        dplyr::across(c(contest, raw_candidate, raw_party), ~na_if(.x, ""))
       ) |>
-      dplyr::left_join(metadata, dplyr::join_by("contest", "raw_candidate", "raw_party")) |>
-      mutate(
-        party = dplyr::coalesce(party, raw_party),
-      ) |>
+      dplyr::inner_join(metadata, dplyr::join_by("contest", "raw_candidate")) |>
       # add metadata for writein/undervote/overvote candidates
       dplyr::group_by(contest) |>
       tidyr::fill(office, district, magnitude, .direction = "downup") |>
@@ -183,11 +207,11 @@ clean_cvr <- function(
     if (isTRUE(metadata_only)) return(metadata)
 
     clean <- raw |>
-      dplyr::left_join(metadata, dplyr::join_by("contest", "raw_candidate", "raw_party")) |>
-      mutate(
-        magnitude = coalesce(magnitude.x, magnitude.y),
-        party_detailed = coalesce(party_detailed.x, party_detailed.y),
-        candidate = coalesce(candidate.y, candidate.x)
+      dplyr::inner_join(metadata, dplyr::join_by("contest", "raw_candidate")) |>
+      dplyr::mutate(
+        magnitude = dplyr::coalesce(magnitude.x, magnitude.y),
+        party_detailed = dplyr::coalesce(party_detailed.x, party_detailed.y),
+        candidate = dplyr::coalesce(candidate.y, candidate.x)
       ) |>
       # this block helps identify undervotes in the 1/0 CVR format
       dplyr::mutate(
