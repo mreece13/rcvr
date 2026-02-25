@@ -45,7 +45,8 @@ gen_metadata <- function(df, type, path, verbose=FALSE){
 
     meta = df |>
       dplyr::filter(!(contest %in% c(rcvr_DROP_COLS, rcvr_RENAME_COLS))) |>
-      dplyr::distinct(contest, raw_candidate, raw_party) |>
+      dplyr::select(any_of(c("contest", "raw_candidate", "raw_party", "raw_magnitude"))) |> 
+      dplyr::distinct() |>
       dplyr::mutate(
         "ballot_order" = dplyr::cur_group_id(),
         .by = "contest"
@@ -53,7 +54,7 @@ gen_metadata <- function(df, type, path, verbose=FALSE){
       dplyr::mutate(
         candidate = raw_candidate,
         party = raw_party,
-        magnitude = stringr::str_extract(contest, stringr::regex("Vote For=(\\d+)", T), group=1) |> as.integer(),
+        magnitude = stringr::str_extract(contest, stringr::regex("Vote For.*?(\\d+)", TRUE), group=1) |> as.integer(),
         party = dplyr::case_when(
           is.na(party) ~ NA_character_,
           stringr::str_detect(party, stringr::regex(gen_patterns(c("DEM", "DFL")), TRUE)) ~ "DEMOCRAT",
@@ -118,14 +119,14 @@ gen_metadata <- function(df, type, path, verbose=FALSE){
         candidate = stringr::str_remove_all(candidate, stringr::regex(gen_patterns(c("DEM", "DFL", "REP", "CPF", "ACN", "GRN", "MTN", "LBR", "LBT", "LIB", "LPN", "NMD", "PSL", "PGP", "NPA", "PRO", "IND", "IAP", "GLC", "NME", "No image found")), TRUE)),
         candidate = stringr::str_remove_all(candidate, "^$|^NA$|^N/A$|\\([^)]*\\)$|[\\p{Mn}]"),
         candidate = stringr::str_squish(candidate),
-        candidate = ifelse(stringr::str_detect(candidate, stringr::regex("Write", T)), "WI", candidate),
+        candidate = ifelse(stringr::str_detect(candidate, stringr::regex("Write", TRUE)), "WI", candidate),
         party = dplyr::case_when(
-          stringr::str_detect(candidate, stringr::regex("undervote|overvote|No image found", T)) ~ NA_character_,
+          stringr::str_detect(candidate, stringr::regex("undervote|overvote|No image found", TRUE)) ~ NA_character_,
           .default = party
         )
       ) |>
       dplyr::filter(
-        !stringr::str_detect(candidate, stringr::regex("^undervote$|^overvote$|^WI$", T))
+        !stringr::str_detect(candidate, stringr::regex("^undervote$|^overvote$|^WI$|^0$", TRUE))
       ) |>
       dplyr::arrange(ballot_order)
 

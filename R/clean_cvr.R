@@ -137,7 +137,10 @@ clean_cvr <- function(
         values_drop_na = TRUE,
         values_transform = as.character
       ) |>
-      tidyr::separate_wider_delim(cols = contest, delim = "||", names = c("contest", "candidate", "raw_party"), too_few = "align_start") |>
+      dplyr::mutate(
+        contest = stringr::str_remove(contest, stringr::regex("^Choice_\\d+_\\d+:", TRUE))
+      ) |> 
+      tidyr::separate_wider_delim(cols = contest, delim = stringr::regex("\\|\\||:"), names = c("contest", "candidate", "raw_party"), too_few = "align_start") |>
       # some rows are aggregated values (CvrNumber=`Redacted and Aggregated...`), need to drop these rows
       dplyr::filter(
         suppressWarnings(as.numeric(raw_candidate)) <= 1 | is.na(suppressWarnings(as.numeric(raw_candidate))),
@@ -155,6 +158,7 @@ clean_cvr <- function(
       #
       # this also deals with CVRs that have contests as columns and cands as cells
       dplyr::mutate(
+        candidate = as.character(candidate),
         raw_candidate = dplyr::case_when(
           raw_candidate %in% rcvr_REDACT_NAMES ~ NA_character_,
           is.na(raw_candidate) ~ "undervote",
