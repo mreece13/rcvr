@@ -35,167 +35,6 @@ clean_cvr <- function(
 
   if (verbose) cli::cli_alert_info("Cleaning {.file {path}}")
 
-  fix_fragmentation <- function(raw){
-
-    # is the ballot fragmented across rows?
-    if ("ballot_style" %in% colnames(raw)){
-
-      foundbrackets = dplyr::distinct(raw, ballot_style) |> dplyr::pull() |> stringr::str_detect("\\[\\d+\\]$") |> sum() > 0
-      firstcol = setdiff(colnames(raw), c(rcvr_DROP_COLS, "cvr_id", "precinct", "ballot_style"))[1]
-      foundspaces = raw[[firstcol]] |> table() |> as.data.frame() |> dplyr::mutate(p = Freq/sum(Freq)) |> dplyr::filter(Var1 == "") |> dplyr::pull(p) > 0.1
-      
-      if (isTRUE(foundbrackets) | isTRUE(foundspaces)) {
-
-        cli::cli_warn("{.file {path}} appears to contain fragmented ballots (where the ballot is split across multiple rows). We attempt to repair this by merging rows together using an intelligent strategy, but any further analysis should be taken with caution.")
-
-        tokeep = raw[[firstcol]] != ""
-
-        base = raw |>
-          dplyr::mutate(
-            dplyr::across(tidyselect::everything(), ~dplyr::na_if(.x, "")),
-            ballot_style2 = stringr::str_remove(ballot_style, " \\[\\d+\\]$"),
-            .before = ballot_style
-          ) |>
-          dplyr::group_by(ballot_style2) |>
-          tidyr::fill(
-            tidyselect::everything(),
-            .direction = "downup"
-          ) |>
-          dplyr::ungroup()
-
-        raw = base[tokeep, ]
-
-      }
-
-    }
-
-    return(raw)
-
-  }
-
-  get_delim <- function(path){
-
-    path = fs::path_real(path)
-
-    if (is_header(path)) {
-      raw <- header_processor(path)
-    } else {
-      ext <- fs::path_ext(path) |> stringr::str_to_upper()
-
-      raw <- switch(ext,
-        "CSV" = data.table::fread(path, colClasses = character(), header=TRUE),
-        "XLS" = readxl::read_excel(path, col_types = "text", .name_repair = "unique_quiet"),
-        "XLSX" = readxl::read_excel(path, col_types = "text", .name_repair = "unique_quiet"),
-      )
-    }
-
-    colnames(raw) <- iconv(colnames(raw), to = "UTF-8", sub = "")
-
-    # Select one matching candidate for each canonical name defined in
-    # `rcvr_RENAME_COLS`. We pick the first candidate that appears in the
-    # file (priority determined by the ordering in `rcvr_RENAME_COLS`). This
-    # ensures only one `ballot_style` column and one `precinct` column are
-    # chosen when multiple variants exist.
-    for (canonical in unique(names(rcvr_RENAME_COLS))) {
-      candidates <- rcvr_RENAME_COLS[names(rcvr_RENAME_COLS) == canonical]
-      found <- candidates[candidates %in% colnames(raw)]
-      if (length(found) > 0) {
-        old_name <- found[1]
-        if (old_name != canonical) {
-          colnames(raw)[colnames(raw) == old_name] <- canonical
-        }
-      } else {
-        # If no candidates found, create an empty column
-        raw[[canonical]] <- NA_character_
-      }
-    }
-
-    # dplyr::mutate(
-    #   raw,
-    #   precinct = as.character(precinct)
-    # ) |> 
-    #   dplyr::bind_rows(tibble::tibble(precinct = character(), ballot_style = character()))
-
-    return(raw)
-
-  }
-  clean_delim <- function(raw){
-
-    raw = fix_fragmentation(raw) |> dplyr::select(-tidyselect::any_of(c("ballot_style", "ballot_style2")))
-
-    d <- raw |>
-      # drop all of the unnecessary columns
-      dplyr::select(-tidyselect::any_of(rcvr_DROP_COLS)) |>
-      # manually define cvr_id as 1:n()
-      dplyr::mutate(
-        "cvr_id" = 1:dplyr::n()
-      ) |>
-      tidyr::pivot_longer(
-        cols = -tidyselect::any_of(c("cvr_id", "precinct", "ballot_style")),
-        names_to = "contest",
-        values_to = "raw_candidate",
-        values_drop_na = TRUE,
-        values_transform = as.character
-      ) |>
-      dplyr::mutate(
-        contest = stringr::str_remove(contest, stringr::regex("^Choice_\\d+_\\d+:", TRUE))
-      ) |> 
-      tidyr::separate_wider_delim(cols = contest, delim = stringr::regex("\\|\\||:"), names = c("contest", "candidate", "raw_party"), too_few = "align_start") |>
-      # some rows are aggregated values (CvrNumber=`Redacted and Aggregated...`), need to drop these rows
-      dplyr::filter(
-        suppressWarnings(as.numeric(raw_candidate)) <= 1 | is.na(suppressWarnings(as.numeric(raw_candidate))),
-        contest != raw_candidate
-      ) |>
-      dplyr::filter(raw_candidate != "0", raw_candidate != "") |>
-      dplyr::group_by(precinct) |>
-      tidyr::complete(
-        cvr_id, tidyr::nesting(contest)
-      ) |>
-      dplyr::ungroup() |>
-      # if they voted, then we just use their lookup table candidate choice
-      # if they didn't vote, they get assigned to undervote
-      # then, we replace all the 0s with NA, now that we've identified undervote
-      #
-      # this also deals with CVRs that have contests as columns and cands as cells
-      dplyr::mutate(
-        candidate = as.character(candidate),
-        raw_candidate = dplyr::case_when(
-          raw_candidate %in% rcvr_REDACT_NAMES ~ NA_character_,
-          is.na(raw_candidate) ~ "undervote",
-          .default = dplyr::coalesce(candidate, as.character(raw_candidate))
-        ),
-        candidate = NULL
-      )
-
-    if (isTRUE(generate_metadata)) metadata = gen_metadata(d, type, path, verbose)
-    if (isTRUE(metadata_only)) return(metadata)
-
-    clean <- d |>
-      dplyr::mutate(
-        dplyr::across(c(contest, raw_candidate, raw_party), ~na_if(.x, ""))
-      ) |>
-      dplyr::inner_join(metadata, dplyr::join_by("contest", "raw_candidate")) |>
-      # add metadata for writein/undervote/overvote candidates
-      dplyr::group_by(contest) |>
-      tidyr::fill(office, district, magnitude, .direction = "downup") |>
-      dplyr::ungroup()
-
-    if (isTRUE(return_metadata)) {
-
-      return(
-        list(
-          clean = clean,
-          metadata = metadata
-        )
-      )
-
-    } else {
-      return(clean)
-    }
-
-
-  }
-
   get_json <- function(path){
 
     rlang::check_installed("dominionCVR", reason = "`dominionCVR` is needed to parse JSON files")
@@ -263,21 +102,24 @@ clean_cvr <- function(
   }
 
   if (type == "DELIM") {
-
-    clean <- get_delim(path) |> clean_delim()
-
+    pairs <- read_delim_cvr(path) |> pairs_from_delim(path)
+  } else if (type == "DELIM-MULTI") {
+    pairs <- read_delim_multi_cvr(path) |> pairs_from_delim(path)
+  } else if (type == "JSON") {
+    pairs <- get_json(path) |> clean_json()
   }
-  else if (type == "DELIM-MULTI") {
 
-    clean <- lapply(list.files(path, recursive=TRUE, full.names=TRUE), get_delim) |>
-      dplyr::bind_rows() |>
-      clean_delim()
+  if (isTRUE(generate_metadata)) metadata <- gen_metadata(pairs, type, path, verbose)
+  if (isTRUE(metadata_only)) return(metadata)
 
-  }
-  else if (type == "JSON") {
+  clean <- pairs |>
+    dplyr::inner_join(metadata, dplyr::join_by("contest", "raw_candidate")) |>
+    dplyr::group_by(contest) |>
+    tidyr::fill(office, district, magnitude, .direction = "downup") |>
+    dplyr::ungroup()
 
-    clean <- get_json(path) |> clean_json()
-
+  if (isTRUE(return_metadata)) {
+    return(list(clean = clean, metadata = metadata))
   }
 
   if (!is.null(write_path)) {

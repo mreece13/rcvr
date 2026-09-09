@@ -137,3 +137,50 @@ header_processor <- function(path, n = Inf) {
   df[-c(bad_rows, 1, 2), ]
 
 }
+
+# the column contract every reader must satisfy
+rcvr_PAIRS_COLS <- c(
+  cvr_id = "integer",
+  precinct = "character",
+  contest = "character",
+  raw_candidate = "character",
+  raw_party = "character",
+  rank = "integer"
+)
+
+#' Assert that a reader returned a valid pairs frame
+#'
+#' @param pairs A tibble returned by one of the `read_*_cvr()` readers.
+#' @param call The calling environment, for error reporting.
+#'
+#' @return `pairs`, invisibly. Aborts with class `rcvr_bad_pairs` otherwise.
+assert_pairs <- function(pairs, call = rlang::caller_env()) {
+  missing <- setdiff(names(rcvr_PAIRS_COLS), colnames(pairs))
+  if (length(missing) > 0) {
+    cli::cli_abort(
+      "Pairs frame is missing required column{?s}: {.field {missing}}",
+      class = "rcvr_bad_pairs",
+      call = call
+    )
+  }
+
+  actual <- vapply(pairs[names(rcvr_PAIRS_COLS)], typeof, character(1))
+  expected <- unname(rcvr_PAIRS_COLS)
+  # R stores integers as "integer" and characters as "character"; logical NA
+  # columns are tolerated only when the column is entirely NA
+  bad <- names(rcvr_PAIRS_COLS)[
+    actual != expected & !vapply(pairs[names(rcvr_PAIRS_COLS)], function(x) all(is.na(x)), logical(1))
+  ]
+  if (length(bad) > 0) {
+    cli::cli_abort(
+      c(
+        "Pairs frame column{?s} {.field {bad}} {?has/have} the wrong type.",
+        "i" = "Expected {.val {unname(rcvr_PAIRS_COLS[bad])}}, got {.val {unname(actual[bad])}}."
+      ),
+      class = "rcvr_bad_pairs",
+      call = call
+    )
+  }
+
+  invisible(pairs)
+}
