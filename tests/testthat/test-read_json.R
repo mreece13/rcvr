@@ -48,6 +48,14 @@ test_that("rank is populated for JSON and is not magnitude", {
   expect_type(pairs$rank, "integer")
 })
 
+test_that("read_json_cvr aborts when a manifest id fails to resolve", {
+  skip_if_no_dominion()
+
+  err <- rlang::catch_cnd(read_json_cvr(fixture_path("json-badids")), classes = "rcvr_unresolved_ids")
+  expect_s3_class(err, "rcvr_unresolved_ids")
+  expect_true(999 %in% err$ids)
+})
+
 test_that("gen_metadata seeds a JSON county with the full store key", {
   skip_if_no_dominion()
   meta <- read_json_cvr(fixture_path("json")) |>

@@ -48,6 +48,36 @@ rcvr_PARTY_PATTERNS <- list(
   "END THE CORRUPTION" = "NME"
 )
 
+# Dominion manifests carry full party names ("Democratic Party") rather than
+# the abbreviations in rcvr_PARTY_PATTERNS. This is an *exact* lookup (not a
+# prefix or substring match) keyed on the normalised full name (upper-cased,
+# squished, trailing " PARTY" stripped), so "Democratic-Republican Party"
+# never collides with "DEMOCRAT". Covers the parties Dominion manifests
+# actually use, plus the nonpartisan spellings already in rcvr_PARTY_PATTERNS.
+rcvr_PARTY_FULL_NAMES <- c(
+  "DEMOCRATIC" = "DEMOCRAT",
+  "DEMOCRAT" = "DEMOCRAT",
+  "REPUBLICAN" = "REPUBLICAN",
+  "LIBERTARIAN" = "LIBERTARIAN",
+  "GREEN" = "GREEN",
+  "CONSTITUTION" = "CONSTITUTION",
+  "INDEPENDENT" = "INDEPENDENT",
+  "NONPARTISAN" = "NONPARTISAN",
+  "NON-PARTISAN" = "NONPARTISAN",
+  "NO PARTY AFFILIATION" = "NO PARTY AFFILIATION",
+  "UNAFFILIATED" = "NO PARTY AFFILIATION"
+)
+
+# normalise a full manifest party string for exact lookup in
+# rcvr_PARTY_FULL_NAMES: upper-case, squish whitespace, drop a trailing
+# " PARTY"
+normalize_party_full_name <- function(x) {
+  x |>
+    stringr::str_to_upper() |>
+    stringr::str_squish() |>
+    stringr::str_remove(" PARTY$")
+}
+
 #' Seed a `party_detailed` value from the raw party and candidate strings
 #'
 #' The party abbreviation may live in the party field, embedded in the
@@ -79,14 +109,14 @@ seed_party <- function(party, candidate) {
 
   # Pre-existing gap, fixed minimally here because Task 6's JSON manifests
   # carry full party names ("Democratic Party") rather than abbreviations,
-  # and rcvr_PARTY_PATTERNS only lists abbreviations. Fall back to a
-  # canonical-name prefix match, on the party field only (never candidate,
-  # so a surname like "Green" is never mistaken for the Green party).
-  for (canonical in names(rcvr_PARTY_PATTERNS)) {
-    hit <- !is.na(party) & is.na(out) &
-      stringr::str_starts(stringr::str_to_upper(party), canonical)
-    out[hit] <- canonical
-  }
+  # and rcvr_PARTY_PATTERNS only lists abbreviations. Exact (not prefix)
+  # lookup against rcvr_PARTY_FULL_NAMES, on the party field only (never
+  # candidate, so a surname is never mistaken for a party name); anything
+  # not an exact match ("Democratic-Republican Party") falls through and
+  # keeps its raw value below, same as today.
+  full <- unname(rcvr_PARTY_FULL_NAMES[normalize_party_full_name(party)])
+  hit <- !is.na(party) & is.na(out) & !is.na(full)
+  out[hit] <- full[hit]
 
   # a party abbreviation that matched nothing above is kept as written
   out <- dplyr::coalesce(out, party)

@@ -112,7 +112,7 @@ read_json_cvr <- function(path) {
 
   m <- read_dominion_manifests(path)
 
-  pairs <- dominionCVR::extract_cvr(files) |>
+  joined <- dominionCVR::extract_cvr(files) |>
     tibble::as_tibble() |>
     dplyr::filter(isCurrent) |>
     dplyr::mutate(
@@ -122,7 +122,45 @@ read_json_cvr <- function(path) {
     dplyr::left_join(m$candidates, dplyr::join_by(candidateId == id)) |>
     dplyr::left_join(dplyr::select(m$contests, id, contest), dplyr::join_by(contestId == id)) |>
     dplyr::left_join(m$parties, dplyr::join_by(partyId == id)) |>
-    dplyr::left_join(m$precincts, dplyr::join_by(precinctPortionId == id)) |>
+    dplyr::left_join(m$precincts, dplyr::join_by(precinctPortionId == id))
+
+  # A left_join() against a manifest silently turns an unresolved id into
+  # NA; assert_pairs() tolerates a partially-NA column, and the downstream
+  # metadata join then drops those rows without a trace. -1L is the
+  # legitimate "no mark"/"no party" sentinel (handled below), so only an id
+  # that is neither -1L nor resolved is an error: a version mismatch, a
+  # truncated manifest, or a corrupt export. Check each id/manifest pair
+  # separately so the abort names the manifest at fault.
+  unresolved <- list(
+    CandidateManifest = dplyr::filter(joined, candidateId != -1L, is.na(raw_candidate)),
+    ContestManifest = dplyr::filter(joined, contestId != -1L, is.na(contest)),
+    PartyManifest = dplyr::filter(joined, partyId != -1L, is.na(raw_party)),
+    PrecinctPortionManifest = dplyr::filter(joined, precinctPortionId != -1L, is.na(precinct))
+  )
+  bad_manifest <- names(unresolved)[vapply(unresolved, nrow, integer(1)) > 0]
+  if (length(bad_manifest) > 0) {
+    id_col <- c(
+      CandidateManifest = "candidateId",
+      ContestManifest = "contestId",
+      PartyManifest = "partyId",
+      PrecinctPortionManifest = "precinctPortionId"
+    )
+    manifest <- bad_manifest[1]
+    bad_rows <- unresolved[[manifest]]
+    ids <- unique(bad_rows[[id_col[[manifest]]]])
+    cli::cli_abort(
+      c(
+        "{length(ids)} id{?s} in the CVR export could not be resolved against {.file {manifest}.json}.",
+        "i" = "Unresolved id{?s}: {.val {utils::head(ids, 10)}}"
+      ),
+      class = "rcvr_unresolved_ids",
+      manifest = manifest,
+      ids = ids,
+      unresolved = bad_rows
+    )
+  }
+
+  pairs <- joined |>
     dplyr::mutate(
       # extract_marks() emits -1 for a contest with no marks, which is an
       # undervote, and -1 rank/party alongside it

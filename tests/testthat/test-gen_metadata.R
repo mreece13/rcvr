@@ -140,3 +140,17 @@ test_that("seed_party maps the nonpartisan abbreviations", {
   expect_equal(seed_party("NPN", NA_character_), "NONPARTISAN")
   expect_equal(seed_party("Nonpartisan", NA_character_), "NONPARTISAN")
 })
+
+test_that("seed_party matches a full manifest party name exactly", {
+  expect_equal(seed_party("Democratic Party", NA_character_), "DEMOCRAT")
+})
+
+test_that("seed_party does not mis-seed a similar-but-different full party name", {
+  out <- seed_party("Democratic-Republican Party", NA_character_)
+  expect_false(identical(out, "DEMOCRAT"))
+  expect_equal(out, "Democratic-Republican Party")
+})
+
+test_that("seed_party matches a nonpartisan full manifest party name exactly", {
+  expect_equal(seed_party("Nonpartisan Party", NA_character_), "NONPARTISAN")
+})
