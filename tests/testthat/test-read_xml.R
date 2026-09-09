@@ -41,3 +41,23 @@ test_that("gen_metadata seeds an XML county with the full store key", {
   expect_true("JOSEPH R BIDEN" %in% meta$raw_candidate)
   expect_equal(unique(meta$state), "TEXAS")
 })
+
+test_that("a ballot with no PrecinctSplit parses with NA precinct, not a crash", {
+  pairs <- read_xml_cvr(fixture_path("xml-no-precinct"))
+  expect_true(is.na(pairs$precinct))
+  expect_equal(pairs$raw_candidate, "JOSEPH R BIDEN")
+})
+
+test_that("only the marked Options sibling is kept, not the first one", {
+  pairs <- read_xml_cvr(fixture_path("xml-multi-options"))
+  expect_equal(pairs$raw_candidate, "BOB SMITH")
+  expect_false("ALICE JONES" %in% pairs$raw_candidate)
+})
+
+test_that("a vote-for-2 contest with two marked options emits two rows", {
+  pairs <- read_xml_cvr(fixture_path("xml-vote-for-2"))
+  expect_equal(nrow(pairs), 2L)
+  expect_true(all(pairs$cvr_id == 1L))
+  expect_true(all(pairs$contest == "CITY COUNCIL"))
+  expect_setequal(pairs$raw_candidate, c("ALICE JONES", "BOB SMITH"))
+})
