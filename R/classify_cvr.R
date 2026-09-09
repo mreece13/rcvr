@@ -65,3 +65,65 @@ classify_cvr <- function(path, verbose = TRUE) {
     cli::cli_abort("{.var path} passed is neither a file nor a directory")
   }
 }
+
+#' Resolve which reader to use for a registry path
+#'
+#' The registry (`metadata/paths.csv`) records the intended type per county.
+#' That declaration wins; [classify_cvr()] is used only to resolve the
+#' sub-case (a single file inside a directory, versus many).
+#'
+#' @param path Path to a CVR file or directory.
+#' @param type (optional) The declared type: one of `"delim"`, `"json"`,
+#'   `"xml"`, `"special"`. `NULL` falls back to sniffing with [classify_cvr()].
+#' @param verbose Verbose output? Default `FALSE`.
+#'
+#' @return A list with `type` (one of `"DELIM"`, `"DELIM-MULTI"`, `"JSON"`,
+#'   `"XML"`, `"SPECIAL"`) and `path` (the path the reader should be given).
+resolve_reader <- function(path, type = NULL, verbose = FALSE) {
+  path <- fs::path_real(path)
+
+  if (is.null(type)) {
+    sniffed <- classify_cvr(path, verbose = verbose)
+    if (length(sniffed) > 1) {
+      return(list(type = sniffed[["type"]], path = fs::path(path, sniffed[["path"]])))
+    }
+    return(list(type = sniffed, path = path))
+  }
+
+  type <- stringr::str_to_lower(type)
+  valid <- c("delim", "json", "xml", "special")
+  if (!(type %in% valid)) {
+    cli::cli_abort(
+      "{.var type} must be one of {.val {valid}}, not {.val {type}}.",
+      class = "rcvr_bad_type"
+    )
+  }
+
+  if (type == "special") {
+    return(list(type = "SPECIAL", path = path))
+  }
+
+  if (type == "json") return(list(type = "JSON", path = path))
+  if (type == "xml") return(list(type = "XML", path = path))
+
+  # delim: a single file is read directly; a directory holds either one
+  # delimited file (read it) or many (DELIM-MULTI). Files of other types in
+  # the same directory are ignored, which is exactly why the declared type wins.
+  if (fs::is_file(path)) {
+    return(list(type = "DELIM", path = path))
+  }
+
+  files <- list.files(path, recursive = TRUE, full.names = TRUE)
+  delim_files <- files[stringr::str_detect(files, "\\.(csv|CSV|xls|XLS|xlsx|XLSX)$")]
+
+  if (length(delim_files) == 0) {
+    cli::cli_abort(
+      "No delimited files found in {.file {path}} despite {.val delim} being declared.",
+      class = "rcvr_no_files"
+    )
+  }
+  if (length(delim_files) == 1) {
+    return(list(type = "DELIM", path = delim_files[1]))
+  }
+  list(type = "DELIM-MULTI", path = path)
+}

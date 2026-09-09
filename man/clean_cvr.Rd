@@ -6,6 +6,7 @@
 \usage{
 clean_cvr(
   path = NA,
+  type = NULL,
   metadata = NULL,
   generate_metadata = FALSE,
   return_metadata = FALSE,
@@ -16,6 +17,8 @@ clean_cvr(
 }
 \arguments{
 \item{path}{Path to the CVR file or directory}
+
+\item{type}{(optional) The declared CVR type from the registry: one of \code{"delim"}, \code{"json"}, \code{"xml"}, \code{"special"}. When \code{NULL} (default) the type is sniffed from the files on disk, which aborts on directories holding more than one file type.}
 
 \item{metadata}{(optional) Existing metadata to merge into the CVR}
 
