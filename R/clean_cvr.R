@@ -101,8 +101,11 @@ clean_cvr <- function(
   county=NA_character_
 ) {
 
-  if (!is.null(metadata) & isTRUE(generate_metadata)) {
-    cli::cli_alert_info("{.var metadata} is non-NULL so {.var generate_metadata} is being ignored")
+  if (!is.null(metadata) && isTRUE(generate_metadata)) {
+    cli::cli_inform(
+      "{.var metadata} is non-NULL so {.var generate_metadata} is being ignored."
+    )
+    generate_metadata <- FALSE
   }
 
   path <- fs::path_real(path)
