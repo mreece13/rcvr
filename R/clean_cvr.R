@@ -46,6 +46,8 @@ clean_cvr <- function(
     pairs <- read_delim_multi_cvr(path) |> pairs_from_delim(path)
   } else if (type == "JSON") {
     pairs <- read_json_cvr(path)
+  } else if (type == "XML") {
+    pairs <- read_xml_cvr(path)
   }
 
   if (isTRUE(generate_metadata) || isTRUE(metadata_only)) {

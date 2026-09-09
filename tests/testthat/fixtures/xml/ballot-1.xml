@@ -1,0 +1,24 @@
+<Cvr>
+  <PrecinctSplit>
+    <Name>PRECINCT 001</Name>
+    <Id>1</Id>
+  </PrecinctSplit>
+  <Contests>
+    <Name>US PRESIDENT</Name>
+    <Undervotes>0</Undervotes>
+    <Options>
+      <Name>JOSEPH R BIDEN</Name>
+      <Value>1</Value>
+    </Options>
+  </Contests>
+  <Contests>
+    <Name>MAYOR</Name>
+    <Undervotes>0</Undervotes>
+    <Options>
+      <WriteInData>
+        <Text>ALEX STONE</Text>
+      </WriteInData>
+      <Value>1</Value>
+    </Options>
+  </Contests>
+</Cvr>

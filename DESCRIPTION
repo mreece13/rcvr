@@ -28,6 +28,7 @@ Imports:
     stringr,
     tibble,
     tidyr,
-    tidyselect
+    tidyselect,
+    xml2
 URL: https://github.com/mreece13/rcvr
 BugReports: https://github.com/mreece13/rcvr/issues
