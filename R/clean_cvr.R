@@ -40,78 +40,12 @@ clean_cvr <- function(
 
   if (verbose) cli::cli_alert_info("Cleaning {.file {path}}")
 
-  get_json <- function(path){
-
-    rlang::check_installed("dominionCVR", reason = "`dominionCVR` is needed to parse JSON files")
-
-    files = list.files(path = path, pattern = "Cvr.*\\.json$|CVR.*\\.json$", full.names = TRUE)
-
-    dominionCVR::extract_cvr(files)
-
-  }
-  clean_json <- function(raw){
-
-    if (isTRUE(generate_metadata)) metadata = gen_metadata(raw, type, path, verbose)
-    if (isTRUE(metadata_only)) return(metadata)
-
-    clean <- raw |>
-      dplyr::inner_join(metadata, dplyr::join_by("contest", "raw_candidate")) |>
-      dplyr::mutate(
-        magnitude = dplyr::coalesce(magnitude.x, magnitude.y),
-        party_detailed = dplyr::coalesce(party_detailed.x, party_detailed.y),
-        candidate = dplyr::coalesce(candidate.y, candidate.x)
-      ) |>
-      # this block helps identify undervotes in the 1/0 CVR format
-      dplyr::mutate(
-        voted = ifelse(
-          all(raw_candidate %in% c("0", rcvr_REDACT_NAMES) | stringr::str_detect(raw_candidate, stringr::regex("undervote", ignore_case=TRUE))),
-          0,
-          1
-        ),
-        .by = c("cvr_id", "contest")
-      ) |>
-      # if they voted, then we just use their lookup table candidate choice
-      # if they didn't vote, they get assigned to undervote
-      # then, we replace all the 0s with NA, now that we've identified undervote
-      #
-      # this also deals with CVRs that have contests as columns and cands as cells
-      dplyr::mutate(
-        party = dplyr::coalesce(party, raw_party),
-        candidate = dplyr::case_when(
-          voted == 0 & raw_candidate %in% rcvr_REDACT_NAMES ~ NA_character_,
-          voted == 0 ~ "undervote",
-          raw_candidate == "0" ~ NA_character_,
-          .default = dplyr::coalesce(candidate, raw_candidate)
-        ),
-        voted = NULL
-      ) |>
-      # add metadata for writein/undervote/overvote candidates
-      dplyr::group_by(contest) |>
-      tidyr::fill(office, district, magnitude, .direction = "downup") |>
-      dplyr::ungroup()
-
-    if (isTRUE(return_metadata)) {
-
-      return(
-        list(
-          clean = clean,
-          metadata = metadata
-        )
-      )
-
-    } else {
-      return(clean)
-    }
-
-
-  }
-
   if (type == "DELIM") {
     pairs <- read_delim_cvr(path) |> pairs_from_delim(path)
   } else if (type == "DELIM-MULTI") {
     pairs <- read_delim_multi_cvr(path) |> pairs_from_delim(path)
   } else if (type == "JSON") {
-    pairs <- get_json(path) |> clean_json()
+    pairs <- read_json_cvr(path)
   }
 
   if (isTRUE(generate_metadata) || isTRUE(metadata_only)) {

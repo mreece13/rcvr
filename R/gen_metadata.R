@@ -77,6 +77,17 @@ seed_party <- function(party, candidate) {
   out <- detect_in(party, out)
   out <- detect_in(candidate, out)
 
+  # Pre-existing gap, fixed minimally here because Task 6's JSON manifests
+  # carry full party names ("Democratic Party") rather than abbreviations,
+  # and rcvr_PARTY_PATTERNS only lists abbreviations. Fall back to a
+  # canonical-name prefix match, on the party field only (never candidate,
+  # so a surname like "Green" is never mistaken for the Green party).
+  for (canonical in names(rcvr_PARTY_PATTERNS)) {
+    hit <- !is.na(party) & is.na(out) &
+      stringr::str_starts(stringr::str_to_upper(party), canonical)
+    out[hit] <- canonical
+  }
+
   # a party abbreviation that matched nothing above is kept as written
   out <- dplyr::coalesce(out, party)
 
@@ -214,6 +225,12 @@ gen_metadata <- function(pairs, type, path, election, state, county, verbose = F
 
   if (type %in% c("DELIM", "DELIM-MULTI")) {
     meta <- infer_magnitude_delim(meta)
+  } else if (type == "JSON") {
+    # district and magnitude come from the Dominion manifests, not from regex
+    ctx <- json_seed_context(path)
+    meta <- meta |>
+      dplyr::select(-district, -magnitude) |>
+      dplyr::left_join(ctx, dplyr::join_by(contest))
   }
 
   meta |>

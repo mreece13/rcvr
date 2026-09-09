@@ -1,0 +1,18 @@
+{"Version": "5.10", "ElectionId": "test", "Sessions": [
+  {"TabulatorId": 1, "BatchId": 1, "RecordId": 1, "CountingGroupId": 1, "SessionType": "eml",
+   "Original": {"PrecinctPortionId": 50, "BallotTypeId": 1, "IsCurrent": true,
+     "Cards": [{"Id": 1, "PaperIndex": 0, "Contests": [
+       {"Id": 10, "Overvotes": 0, "Undervotes": 0, "OutstackConditionIds": [],
+        "Marks": [{"CandidateId": 100, "PartyId": 1, "Rank": 1, "IsAmbiguous": false, "MarkDensity": 90, "IsVote": true}]},
+       {"Id": 11, "Overvotes": 0, "Undervotes": 0, "OutstackConditionIds": [],
+        "Marks": [{"CandidateId": 102, "PartyId": 2, "Rank": 1, "IsAmbiguous": false, "MarkDensity": 88, "IsVote": true}]}
+     ]}]}},
+  {"TabulatorId": 1, "BatchId": 1, "RecordId": 2, "CountingGroupId": 1, "SessionType": "eml",
+   "Original": {"PrecinctPortionId": 50, "BallotTypeId": 1, "IsCurrent": true,
+     "Cards": [{"Id": 1, "PaperIndex": 0, "Contests": [
+       {"Id": 10, "Overvotes": 0, "Undervotes": 0, "OutstackConditionIds": [],
+        "Marks": [{"CandidateId": 101, "PartyId": 2, "Rank": 1, "IsAmbiguous": false, "MarkDensity": 91, "IsVote": true}]},
+       {"Id": 11, "Overvotes": 0, "Undervotes": 1, "OutstackConditionIds": [],
+        "Marks": []}
+     ]}]}}
+]}
