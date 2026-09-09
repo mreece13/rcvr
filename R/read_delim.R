@@ -127,7 +127,10 @@ pairs_from_delim <- function(raw, path = NA) {
       values_transform = as.character
     ) |>
     dplyr::mutate(
-      contest = stringr::str_remove(contest, stringr::regex("^Choice_\\d+_\\d+:", TRUE))
+      contest = stringr::str_remove(contest, stringr::regex("^Choice_\\d+_\\d+:", TRUE)),
+      # strip the dedup marker `header_processor()` appended (rcvr_DUP_SENTINEL)
+      # before separate_wider_delim() can push it onto the last component
+      contest = stringr::str_remove(contest, "__RCVRDUP__\\d+$")
     ) |>
     tidyr::separate_wider_delim(
       cols = contest,

@@ -25,6 +25,11 @@ rcvr_DROP_COLS <- c(
   "Is Current"
 )
 
+# appended by `header_processor()` to make duplicate column names unique.
+# Chosen so it cannot occur in vendor data and can be stripped unambiguously
+# before the name is split back into (contest, candidate, party).
+rcvr_DUP_SENTINEL <- "__RCVRDUP__"
+
 # various permutations of a label that the cell is redacted
 rcvr_REDACT_NAMES = c("X", "redacted for voter privacy", "REDACTED", "Redacted", "*", "redacted", "Redacted per 24-27-205.5 (4)(b)(III) C.R.S.")
 
@@ -101,7 +106,12 @@ header_processor <- function(path, n = Inf) {
       skip=1,
       nrows=n,
       header=TRUE,
-      colClasses=character()
+      # `character()` (a zero-length vector) is a no-op for `colClasses`, which
+      # let fread's type inference silently turn all-numeric-looking metadata
+      # columns (e.g. a Precinct column of "001"/"002") into integers,
+      # dropping the leading zero. The pairs-frame contract requires
+      # character; force it here as done in `read_delim_cvr()`.
+      colClasses="character"
     )
 
   } else if (stringr::str_detect(path, "xls$|xlsx$|XLS$|XLSX$")) {
@@ -131,8 +141,14 @@ header_processor <- function(path, n = Inf) {
     iconv(to = "UTF-8", sub = "") |>
     stringr::str_remove_all("^V\\d+") |>
     stringr::str_remove_all("^\\|\\|") |>
-    stringr::str_remove_all("^\\|\\|") |> 
-    make.unique(sep = "_")
+    stringr::str_remove_all("^\\|\\|") |>
+    # a metadata column (e.g. CvrNumber, Precinct) with blank candidate/party
+    # header cells pastes as e.g. "CvrNumber||||"; fread reads a blank cell as
+    # "" (not NA) once colClasses forces character, so the "||NA" removals
+    # above don't catch it. A key column must never carry this artefact, so
+    # strip trailing empty "||" components here too.
+    stringr::str_remove_all("(\\|\\|)+$") |>
+    make.unique(sep = rcvr_DUP_SENTINEL)
 
   df[-c(bad_rows, 1, 2), ]
 
