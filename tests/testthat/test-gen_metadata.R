@@ -94,3 +94,40 @@ test_that("gen_metadata aborts with class rcvr_bad_metadata_args when election/s
     class = "rcvr_bad_metadata_args"
   )
 })
+
+nonpartisan_meta <- function() {
+  read_delim_cvr(fixture_path("delim-nonpartisan", "cvr.csv")) |>
+    pairs_from_delim() |>
+    gen_metadata(
+      "DELIM", fixture_path("delim-nonpartisan", "cvr.csv"),
+      "2020 General", "COLORADO", "CLEAR CREEK"
+    )
+}
+
+test_that("a nonpartisan row carries both party_detailed and the nonpartisan flag", {
+  meta <- nonpartisan_meta()
+  board <- dplyr::filter(meta, contest == "SCHOOL BOARD")
+
+  expect_true(all(board$party_detailed == "NONPARTISAN"))
+  expect_true(all(board$nonpartisan))
+})
+
+test_that("a partisan row is not flagged nonpartisan", {
+  meta <- nonpartisan_meta()
+  pres <- dplyr::filter(meta, contest == "US PRESIDENT")
+
+  expect_equal(pres$party_detailed, "DEMOCRAT")
+  expect_false(any(pres$nonpartisan))
+})
+
+test_that("nonpartisan is logical and NA only when no party could be determined", {
+  meta <- nonpartisan_meta()
+  expect_type(meta$nonpartisan, "logical")
+  expect_equal(is.na(meta$nonpartisan), is.na(meta$party_detailed))
+})
+
+test_that("seed_party maps the nonpartisan abbreviations", {
+  expect_equal(seed_party("NON", NA_character_), "NONPARTISAN")
+  expect_equal(seed_party("NPN", NA_character_), "NONPARTISAN")
+  expect_equal(seed_party("Nonpartisan", NA_character_), "NONPARTISAN")
+})

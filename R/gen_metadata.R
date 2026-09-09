@@ -41,6 +41,7 @@ rcvr_PARTY_PATTERNS <- list(
   "LIBERTARIAN" = c("LBR", "LBT", "LIB", "LPN", "NMD"),
   "SOCIALIST" = c("PSL", "PGP"),
   "NO PARTY AFFILIATION" = "NPA",
+  "NONPARTISAN" = c("NON", "NPN", "NONPARTISAN"),
   "PROGRESSIVE" = "PRO",
   "INDEPENDENT" = c("IND", "IAP"),
   "GRASSROOTS-LEGALIZE CANNABIS" = "GLC",
@@ -196,10 +197,14 @@ gen_metadata <- function(pairs, type, path, election, state, county, verbose = F
       district = NA_character_,
       candidate = seed_candidate(raw_candidate),
       party_detailed = seed_party(raw_party, raw_candidate),
+      # a nonpartisan row carries BOTH the party value and the flag; NA only
+      # when no party could be determined at all
+      nonpartisan = dplyr::if_else(
+        is.na(party_detailed), NA, party_detailed == "NONPARTISAN"
+      ),
       magnitude = stringr::str_extract(
         contest, stringr::regex("Vote For.*?(\\d+)", TRUE), group = 1
       ) |> as.integer(),
-      nonpartisan = NA,
       drop = FALSE
     ) |>
     dplyr::filter(
