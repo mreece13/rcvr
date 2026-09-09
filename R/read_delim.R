@@ -100,7 +100,20 @@ read_delim_cvr <- function(path) {
 #'
 #' @return A wide tibble, all files row-bound.
 read_delim_multi_cvr <- function(dir) {
-  list.files(dir, recursive = TRUE, full.names = TRUE) |>
+  files <- list.files(dir, recursive = TRUE, full.names = TRUE)
+  # `read_delim_multi_cvr()` is public and callable directly, so it must be
+  # safe to point at a directory holding a stray non-delim file (a JSON
+  # note, a `Write In Images` subfolder) without aborting the whole county.
+  delim_files <- files[stringr::str_detect(files, "\\.(csv|CSV|xls|XLS|xlsx|XLSX)$")]
+
+  if (length(delim_files) == 0) {
+    cli::cli_abort(
+      "No delimited files found in {.file {dir}}.",
+      class = "rcvr_no_files"
+    )
+  }
+
+  delim_files |>
     lapply(read_delim_cvr) |>
     dplyr::bind_rows()
 }

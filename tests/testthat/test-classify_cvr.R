@@ -35,3 +35,8 @@ test_that("resolve_reader falls back to sniffing when type is NULL", {
   res <- resolve_reader(fixture_path("delim-plain", "cvr.csv"), type = NULL)
   expect_equal(res$type, "DELIM")
 })
+
+test_that("resolve_reader picks DELIM-MULTI for a declared delim dir with a stray file", {
+  res <- resolve_reader(fixture_path("delim-multi-mixed"), type = "delim")
+  expect_equal(res$type, "DELIM-MULTI")
+})

@@ -34,3 +34,8 @@ test_that("read_delim_multi_cvr row-binds every file in the directory", {
   raw <- read_delim_multi_cvr(fixture_path("delim-multi"))
   expect_equal(nrow(raw), 4)
 })
+
+test_that("read_delim_multi_cvr ignores a stray non-delim file in the directory", {
+  raw <- read_delim_multi_cvr(fixture_path("delim-multi-mixed"))
+  expect_equal(nrow(raw), 4)
+})
