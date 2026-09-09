@@ -113,6 +113,13 @@ clean_cvr <- function(
   path <- resolved$path
   type <- resolved$type
 
+  if (type == "SPECIAL" && (is.na(state) || is.na(county))) {
+    cli::cli_abort(
+      "{.var state} and {.var county} are required for {.val special} CVRs.",
+      class = "rcvr_missing_county"
+    )
+  }
+
   if (verbose) cli::cli_alert_info("Cleaning {.file {path}}")
 
   if (type == "DELIM") {
@@ -123,6 +130,8 @@ clean_cvr <- function(
     pairs <- read_json_cvr(path)
   } else if (type == "XML") {
     pairs <- read_xml_cvr(path)
+  } else if (type == "SPECIAL") {
+    pairs <- read_special_cvr(path, state, county)
   }
 
   if (isTRUE(generate_metadata) || isTRUE(metadata_only)) {
