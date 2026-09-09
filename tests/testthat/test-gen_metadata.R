@@ -126,6 +126,15 @@ test_that("nonpartisan is logical and NA only when no party could be determined"
   expect_equal(is.na(meta$nonpartisan), is.na(meta$party_detailed))
 })
 
+test_that("nonpartisan is NA when party_detailed cannot be determined at all", {
+  meta <- nonpartisan_meta()
+  no_party <- dplyr::filter(meta, is.na(party_detailed))
+
+  expect_true(nrow(no_party) > 0)
+  expect_true(all(is.na(no_party$nonpartisan)))
+  expect_type(meta$nonpartisan, "logical")
+})
+
 test_that("seed_party maps the nonpartisan abbreviations", {
   expect_equal(seed_party("NON", NA_character_), "NONPARTISAN")
   expect_equal(seed_party("NPN", NA_character_), "NONPARTISAN")
