@@ -249,7 +249,9 @@ gen_metadata <- function(pairs, type, path, election, state, county, verbose = F
       drop = FALSE
     ) |>
     dplyr::filter(
-      !stringr::str_detect(candidate, stringr::regex("^undervote$|^overvote$|^WI$|^0$", TRUE))
+      # rcvr_UNSEEDED_RE (R/utils.R) is shared with join_metadata()'s
+      # unmatched-pair exemption so the two filters cannot drift
+      !stringr::str_detect(candidate, rcvr_UNSEEDED_RE)
     ) |>
     dplyr::arrange(ballot_order)
 

@@ -1,3 +1,71 @@
+#' Attach store values to a pairs frame
+#'
+#' A left join, guarded by an anti-join check. A raw pair with no store row is
+#' a hard error for that county: it means the store has not been seeded or
+#' reconciled for this file, and silently dropping the rows is precisely the
+#' failure mode this package exists to remove.
+#'
+#' Pairs matching `rcvr_UNSEEDED_RE` (undervote, overvote, write-in, `"0"`)
+#' are exempt — they are synthesised by the reader and `gen_metadata()`
+#' deliberately never seeds them into the store.
+#'
+#' @param pairs A pairs frame.
+#' @param metadata A store slice, already filtered to one
+#'   `(election, state, county)`.
+#' @param state,county Used only in the error message.
+#'
+#' @return The pairs frame with store columns attached.
+join_metadata <- function(pairs, metadata, state = NA, county = NA) {
+  if (is.null(metadata)) {
+    cli::cli_abort(
+      "{.var metadata} is required unless {.var generate_metadata} or {.var metadata_only} is {.code TRUE}.",
+      class = "rcvr_no_metadata"
+    )
+  }
+
+  # the slice arrives carrying the store key columns; they are constant within
+  # a slice and would collide with the caller's own columns downstream.
+  # raw_party is dropped too: the pairs frame already carries its own
+  # raw_party (the reader's copy, authoritative), and the store's copy is
+  # identical by construction, so keeping both would produce
+  # raw_party.x/raw_party.y from left_join() below
+  meta <- dplyr::select(
+    metadata,
+    -tidyselect::any_of(c("election", "state", "county", "raw_party"))
+  )
+
+  joinable <- dplyr::filter(pairs, !stringr::str_detect(raw_candidate, rcvr_UNSEEDED_RE))
+
+  unmatched <- dplyr::anti_join(
+    dplyr::distinct(joinable, contest, raw_candidate),
+    meta,
+    dplyr::join_by("contest", "raw_candidate")
+  )
+
+  if (nrow(unmatched) > 0) {
+    shown <- utils::head(unmatched, 10)
+    cli::cli_abort(
+      c(
+        "{nrow(unmatched)} raw pair{?s} in {.val {state}} / {.val {county}} {?has/have} no row in the metadata store.",
+        "x" = paste0(shown$contest, " / ", shown$raw_candidate),
+        "i" = "Seed and reconcile the store for this county before cleaning it."
+      ),
+      class = "rcvr_unmatched_pairs",
+      pairs = unmatched
+    )
+  }
+
+  # see clean_cvr()'s withCallingHandlers() for why dplyr_regroup is muffled
+  withCallingHandlers(
+    dplyr::left_join(pairs, meta, dplyr::join_by("contest", "raw_candidate")) |>
+      # writein/undervote/overvote rows inherit their contest's office metadata
+      dplyr::group_by(contest) |>
+      tidyr::fill(office, district, magnitude, .direction = "downup") |>
+      dplyr::ungroup(),
+    dplyr_regroup = function(cnd) rlang::cnd_muffle(cnd)
+  )
+}
+
 #' Main Cleaning Function
 #'
 #' @param path Path to the CVR file or directory
@@ -33,46 +101,59 @@ clean_cvr <- function(
     cli::cli_alert_info("{.var metadata} is non-NULL so {.var generate_metadata} is being ignored")
   }
 
-  path <- fs::path_real(path)
-  resolved <- resolve_reader(path, type = type, verbose = FALSE)
-  path <- resolved$path
-  type <- resolved$type
+  # Pre-existing defect, fixed minimally here because it blocks reaching
+  # GREEN on Task 8's own test: dplyr (>= 1.2.0) has every `group_by()` call
+  # signal a "dplyr_regroup" condition, unconditionally, even on data that
+  # was not previously grouped (readers and join_metadata() both call
+  # `group_by()`). The condition does not inherit from "message", so it
+  # survives `suppressMessages()`; it is otherwise harmless (nothing else
+  # in the call chain handles it, so it never stops execution) but
+  # `rlang::catch_cnd()` defaults to `classes = "condition"`, which is
+  # exactly what the brief's own abort test uses to retrieve the
+  # `rcvr_unmatched_pairs` condition — so without this, catch_cnd() always
+  # returns the wrong condition first. Muffle it for the whole read+join
+  # pipeline; real errors (including our classed aborts) are untouched.
+  withCallingHandlers(
+    {
+      path <- fs::path_real(path)
+      resolved <- resolve_reader(path, type = type, verbose = FALSE)
+      path <- resolved$path
+      type <- resolved$type
 
-  if (verbose) cli::cli_alert_info("Cleaning {.file {path}}")
+      if (verbose) cli::cli_alert_info("Cleaning {.file {path}}")
 
-  if (type == "DELIM") {
-    pairs <- read_delim_cvr(path) |> pairs_from_delim(path)
-  } else if (type == "DELIM-MULTI") {
-    pairs <- read_delim_multi_cvr(path) |> pairs_from_delim(path)
-  } else if (type == "JSON") {
-    pairs <- read_json_cvr(path)
-  } else if (type == "XML") {
-    pairs <- read_xml_cvr(path)
-  }
+      if (type == "DELIM") {
+        pairs <- read_delim_cvr(path) |> pairs_from_delim(path)
+      } else if (type == "DELIM-MULTI") {
+        pairs <- read_delim_multi_cvr(path) |> pairs_from_delim(path)
+      } else if (type == "JSON") {
+        pairs <- read_json_cvr(path)
+      } else if (type == "XML") {
+        pairs <- read_xml_cvr(path)
+      }
 
-  if (isTRUE(generate_metadata) || isTRUE(metadata_only)) {
-    metadata <- gen_metadata(pairs, type, path, election, state, county, verbose)
-  }
-  if (isTRUE(metadata_only)) return(metadata)
+      if (isTRUE(generate_metadata) || isTRUE(metadata_only)) {
+        metadata <- gen_metadata(pairs, type, path, election, state, county, verbose)
+      }
+      if (isTRUE(metadata_only)) return(metadata)
 
-  clean <- pairs |>
-    dplyr::inner_join(metadata, dplyr::join_by("contest", "raw_candidate")) |>
-    dplyr::group_by(contest) |>
-    tidyr::fill(office, district, magnitude, .direction = "downup") |>
-    dplyr::ungroup()
+      clean <- join_metadata(pairs, metadata, state = state, county = county)
 
-  if (isTRUE(return_metadata)) {
-    return(list(clean = clean, metadata = metadata))
-  }
+      if (isTRUE(return_metadata)) {
+        return(list(clean = clean, metadata = metadata))
+      }
 
-  if (!is.null(write_path)) {
-    rlang::check_installed("arrow", reason = "`arrow` is needed to write Parquet files")
+      if (!is.null(write_path)) {
+        rlang::check_installed("arrow", reason = "`arrow` is needed to write Parquet files")
 
-    fs::dir_create(fs::path_dir(write_path))
-    arrow::write_parquet(clean, write_path)
-    return(write_path)
-  }
+        fs::dir_create(fs::path_dir(write_path))
+        arrow::write_parquet(clean, write_path)
+        return(write_path)
+      }
 
-  return(clean)
+      return(clean)
+    },
+    dplyr_regroup = function(cnd) rlang::cnd_muffle(cnd)
+  )
 
 }

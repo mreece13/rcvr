@@ -154,6 +154,18 @@ header_processor <- function(path, n = Inf) {
 
 }
 
+# Pairs the metadata store never seeds a row for. gen_metadata() drops
+# undervote/overvote/write-in/"0" from the seed after cleaning raw_candidate
+# via seed_candidate(), so join_metadata()'s anti-join check must exempt the
+# same raw pairs or it would abort a county on perfectly good ballots (a
+# write-in vote, an overvote). One regex serves both call sites so they
+# cannot drift: "undervote"/"overvote"/"0" are spelled identically raw and
+# cleaned; "Write" is the same substring test seed_candidate() uses to
+# collapse a raw write-in spelling to the cleaned "WI"; and the literal "WI"
+# is included so gen_metadata()'s post-seed filter (which tests the already-
+# cleaned `candidate` column) keeps its exact prior behaviour.
+rcvr_UNSEEDED_RE <- stringr::regex("^undervote$|^overvote$|^WI$|^0$|Write", ignore_case = TRUE)
+
 # the column contract every reader must satisfy
 rcvr_PAIRS_COLS <- c(
   cvr_id = "integer",
