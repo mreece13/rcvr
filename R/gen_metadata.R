@@ -173,9 +173,16 @@ infer_magnitude_delim <- function(meta) {
 #' @return A tibble with the columns in `rcvr_SEED_COLS`, one row per raw
 #'   (contest, candidate) pair.
 gen_metadata <- function(pairs, type, path, election, state, county, verbose = FALSE) {
-  checkmate::assert_string(election)
-  checkmate::assert_string(state)
-  checkmate::assert_string(county)
+  key_args <- list(election = election, state = state, county = county)
+  bad <- names(key_args)[
+    !vapply(key_args, checkmate::test_string, logical(1), na.ok = FALSE)
+  ]
+  if (length(bad) > 0) {
+    cli::cli_abort(
+      "{.arg {bad}} must be a single non-NA string.",
+      class = "rcvr_bad_metadata_args"
+    )
+  }
   assert_pairs(pairs)
 
   if (verbose) cli::cli_alert_info("Generating metadata for {.val {type}} CVR format")

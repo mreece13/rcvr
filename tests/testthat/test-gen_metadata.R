@@ -70,3 +70,27 @@ test_that("seed_candidate strips party prefixes, parentheticals, and diacritics"
   expect_equal(seed_candidate("JOHN ROE (REP)"), "JOHN ROE")
   expect_equal(seed_candidate("WRITE-IN"), "WI")
 })
+
+test_that("gen_metadata aborts with class rcvr_bad_metadata_args when election/state/county are invalid", {
+  expect_error(
+    gen_metadata(
+      delim_pairs(), "DELIM", fixture_path("delim-plain", "cvr.csv"),
+      NA_character_, "COLORADO", "CLEAR CREEK"
+    ),
+    class = "rcvr_bad_metadata_args"
+  )
+  expect_error(
+    gen_metadata(
+      delim_pairs(), "DELIM", fixture_path("delim-plain", "cvr.csv"),
+      "2020 General", NA_character_, "CLEAR CREEK"
+    ),
+    class = "rcvr_bad_metadata_args"
+  )
+  expect_error(
+    gen_metadata(
+      delim_pairs(), "DELIM", fixture_path("delim-plain", "cvr.csv"),
+      "2020 General", "COLORADO", NA_character_
+    ),
+    class = "rcvr_bad_metadata_args"
+  )
+})
