@@ -12,7 +12,10 @@ clean_cvr(
   return_metadata = FALSE,
   metadata_only = FALSE,
   verbose = TRUE,
-  write_path = NULL
+  write_path = NULL,
+  election = NA_character_,
+  state = NA_character_,
+  county = NA_character_
 )
 }
 \arguments{
@@ -31,6 +34,12 @@ clean_cvr(
 \item{verbose}{Verbose output? Default \code{FALSE}}
 
 \item{write_path}{(optional) Path to write a parquet file, in which case the function only returns a path}
+
+\item{election}{The election label, e.g. \code{"2020 General"}. Required when generating metadata.}
+
+\item{state}{The state name, upper case. Required when generating metadata.}
+
+\item{county}{The county name, upper case. Required when generating metadata.}
 }
 \value{
 Either a \code{tibble} with the cleaned CVR (\code{return_metadata=FALSE}) or a list containing both the cleaned CVR and the generated metadata (\code{generate_metadata=TRUE} and \code{return_metadata=FALSE}) or just the generated metadata (\code{metadata_only=TRUE}) or a path to the output file (\code{write_dir} is non-NULL).

@@ -8,6 +8,9 @@
 #' @param metadata_only Only return the metadata generated, and skip returning the file itself? Useful for getting a blank slate of metadata that users could then manually adjust before returning via the `metadata=` argument. Default `FALSE`.
 #' @param verbose Verbose output? Default `FALSE`
 #' @param write_path (optional) Path to write a parquet file, in which case the function only returns a path
+#' @param election The election label, e.g. `"2020 General"`. Required when generating metadata.
+#' @param state The state name, upper case. Required when generating metadata.
+#' @param county The county name, upper case. Required when generating metadata.
 #'
 #' @returns Either a `tibble` with the cleaned CVR (`return_metadata=FALSE`) or a list containing both the cleaned CVR and the generated metadata (`generate_metadata=TRUE` and `return_metadata=FALSE`) or just the generated metadata (`metadata_only=TRUE`) or a path to the output file (`write_dir` is non-NULL).
 #' @export
@@ -20,7 +23,10 @@ clean_cvr <- function(
   return_metadata=FALSE,
   metadata_only=FALSE,
   verbose=TRUE,
-  write_path=NULL
+  write_path=NULL,
+  election=NA_character_,
+  state=NA_character_,
+  county=NA_character_
 ) {
 
   if (!is.null(metadata) & isTRUE(generate_metadata)) {
@@ -108,7 +114,9 @@ clean_cvr <- function(
     pairs <- get_json(path) |> clean_json()
   }
 
-  if (isTRUE(generate_metadata)) metadata <- gen_metadata(pairs, type, path, verbose)
+  if (isTRUE(generate_metadata) || isTRUE(metadata_only)) {
+    metadata <- gen_metadata(pairs, type, path, election, state, county, verbose)
+  }
   if (isTRUE(metadata_only)) return(metadata)
 
   clean <- pairs |>
