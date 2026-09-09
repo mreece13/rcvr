@@ -32,9 +32,15 @@ test_that("clean_cvr aborts and names the pair when the store is missing a row",
     class = "rcvr_unmatched_pairs"
   )
 
+  # scoped to "error": dplyr (>= 1.2.0) signals a bare, payload-free
+  # "dplyr_regroup" condition on every group_by() call (its own internal
+  # test-instrumentation hook), which is not an error and must not be what
+  # this assertion inspects
   err <- rlang::catch_cnd(
-    clean_cvr(plain_path(), type = "delim", metadata = partial, verbose = FALSE)
+    clean_cvr(plain_path(), type = "delim", metadata = partial, verbose = FALSE),
+    classes = "error"
   )
+  expect_s3_class(err, "rcvr_unmatched_pairs")
   expect_true("DONALD J TRUMP" %in% err$pairs$raw_candidate)
   expect_match(conditionMessage(err), "DONALD J TRUMP")
 })
@@ -44,6 +50,36 @@ test_that("clean_cvr never silently returns fewer rows than the pairs frame", {
   clean <- clean_cvr(plain_path(), type = "delim", metadata = full_store(), verbose = FALSE)
 
   expect_equal(nrow(clean), nrow(pairs))
+})
+
+test_that("join_metadata aborts on an NA raw_candidate instead of silently keeping it", {
+  # str_detect(NA, ...) is NA, and dplyr::filter() drops NA conditions; an
+  # NA-keyed pair must never be treated as exempt the way "undervote" is
+  pairs <- tibble::tibble(
+    cvr_id = 1L,
+    precinct = "001",
+    contest = "MAYOR",
+    raw_candidate = NA_character_,
+    raw_party = NA_character_,
+    rank = NA_integer_
+  )
+  store <- tibble::tibble(
+    contest = "MAYOR",
+    raw_candidate = "JANE DOE",
+    raw_party = NA_character_,
+    office = "MAYOR",
+    district = NA_character_,
+    candidate = "JANE DOE",
+    party_detailed = NA_character_,
+    magnitude = 1L
+  )
+
+  err <- rlang::catch_cnd(
+    join_metadata(pairs, store, state = "X", county = "Y"),
+    classes = "error"
+  )
+  expect_s3_class(err, "rcvr_unmatched_pairs")
+  expect_true(anyNA(err$pairs$raw_candidate))
 })
 
 test_that("clean_cvr tolerates a store slice that still carries its key columns", {

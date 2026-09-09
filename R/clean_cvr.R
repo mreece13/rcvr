@@ -34,7 +34,15 @@ join_metadata <- function(pairs, metadata, state = NA, county = NA) {
     -tidyselect::any_of(c("election", "state", "county", "raw_party"))
   )
 
-  joinable <- dplyr::filter(pairs, !stringr::str_detect(raw_candidate, rcvr_UNSEEDED_RE))
+  # an NA raw_candidate is never exempt: str_detect(NA, ...) is NA, and
+  # dplyr::filter() drops NA conditions, so without coalescing to FALSE an
+  # NA-keyed pair would silently skip the anti-join and survive the left
+  # join with every store column NA — exactly the silent loss this
+  # function exists to prevent
+  joinable <- dplyr::filter(
+    pairs,
+    !dplyr::coalesce(stringr::str_detect(raw_candidate, rcvr_UNSEEDED_RE), FALSE)
+  )
 
   unmatched <- dplyr::anti_join(
     dplyr::distinct(joinable, contest, raw_candidate),
@@ -55,15 +63,11 @@ join_metadata <- function(pairs, metadata, state = NA, county = NA) {
     )
   }
 
-  # see clean_cvr()'s withCallingHandlers() for why dplyr_regroup is muffled
-  withCallingHandlers(
-    dplyr::left_join(pairs, meta, dplyr::join_by("contest", "raw_candidate")) |>
-      # writein/undervote/overvote rows inherit their contest's office metadata
-      dplyr::group_by(contest) |>
-      tidyr::fill(office, district, magnitude, .direction = "downup") |>
-      dplyr::ungroup(),
-    dplyr_regroup = function(cnd) rlang::cnd_muffle(cnd)
-  )
+  dplyr::left_join(pairs, meta, dplyr::join_by("contest", "raw_candidate")) |>
+    # writein/undervote/overvote rows inherit their contest's office metadata
+    dplyr::group_by(contest) |>
+    tidyr::fill(office, district, magnitude, .direction = "downup") |>
+    dplyr::ungroup()
 }
 
 #' Main Cleaning Function
@@ -101,59 +105,42 @@ clean_cvr <- function(
     cli::cli_alert_info("{.var metadata} is non-NULL so {.var generate_metadata} is being ignored")
   }
 
-  # Pre-existing defect, fixed minimally here because it blocks reaching
-  # GREEN on Task 8's own test: dplyr (>= 1.2.0) has every `group_by()` call
-  # signal a "dplyr_regroup" condition, unconditionally, even on data that
-  # was not previously grouped (readers and join_metadata() both call
-  # `group_by()`). The condition does not inherit from "message", so it
-  # survives `suppressMessages()`; it is otherwise harmless (nothing else
-  # in the call chain handles it, so it never stops execution) but
-  # `rlang::catch_cnd()` defaults to `classes = "condition"`, which is
-  # exactly what the brief's own abort test uses to retrieve the
-  # `rcvr_unmatched_pairs` condition — so without this, catch_cnd() always
-  # returns the wrong condition first. Muffle it for the whole read+join
-  # pipeline; real errors (including our classed aborts) are untouched.
-  withCallingHandlers(
-    {
-      path <- fs::path_real(path)
-      resolved <- resolve_reader(path, type = type, verbose = FALSE)
-      path <- resolved$path
-      type <- resolved$type
+  path <- fs::path_real(path)
+  resolved <- resolve_reader(path, type = type, verbose = FALSE)
+  path <- resolved$path
+  type <- resolved$type
 
-      if (verbose) cli::cli_alert_info("Cleaning {.file {path}}")
+  if (verbose) cli::cli_alert_info("Cleaning {.file {path}}")
 
-      if (type == "DELIM") {
-        pairs <- read_delim_cvr(path) |> pairs_from_delim(path)
-      } else if (type == "DELIM-MULTI") {
-        pairs <- read_delim_multi_cvr(path) |> pairs_from_delim(path)
-      } else if (type == "JSON") {
-        pairs <- read_json_cvr(path)
-      } else if (type == "XML") {
-        pairs <- read_xml_cvr(path)
-      }
+  if (type == "DELIM") {
+    pairs <- read_delim_cvr(path) |> pairs_from_delim(path)
+  } else if (type == "DELIM-MULTI") {
+    pairs <- read_delim_multi_cvr(path) |> pairs_from_delim(path)
+  } else if (type == "JSON") {
+    pairs <- read_json_cvr(path)
+  } else if (type == "XML") {
+    pairs <- read_xml_cvr(path)
+  }
 
-      if (isTRUE(generate_metadata) || isTRUE(metadata_only)) {
-        metadata <- gen_metadata(pairs, type, path, election, state, county, verbose)
-      }
-      if (isTRUE(metadata_only)) return(metadata)
+  if (isTRUE(generate_metadata) || isTRUE(metadata_only)) {
+    metadata <- gen_metadata(pairs, type, path, election, state, county, verbose)
+  }
+  if (isTRUE(metadata_only)) return(metadata)
 
-      clean <- join_metadata(pairs, metadata, state = state, county = county)
+  clean <- join_metadata(pairs, metadata, state = state, county = county)
 
-      if (isTRUE(return_metadata)) {
-        return(list(clean = clean, metadata = metadata))
-      }
+  if (isTRUE(return_metadata)) {
+    return(list(clean = clean, metadata = metadata))
+  }
 
-      if (!is.null(write_path)) {
-        rlang::check_installed("arrow", reason = "`arrow` is needed to write Parquet files")
+  if (!is.null(write_path)) {
+    rlang::check_installed("arrow", reason = "`arrow` is needed to write Parquet files")
 
-        fs::dir_create(fs::path_dir(write_path))
-        arrow::write_parquet(clean, write_path)
-        return(write_path)
-      }
+    fs::dir_create(fs::path_dir(write_path))
+    arrow::write_parquet(clean, write_path)
+    return(write_path)
+  }
 
-      return(clean)
-    },
-    dplyr_regroup = function(cnd) rlang::cnd_muffle(cnd)
-  )
+  return(clean)
 
 }
