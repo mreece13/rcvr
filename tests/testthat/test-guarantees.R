@@ -13,17 +13,32 @@ test_that("a store row wins over any regex change in gen_metadata (seeds, not ru
     )
   )
 
-  before <- clean_cvr(plain_path(), type = "delim", metadata = store, verbose = FALSE)
+  pairs <- read_delim_cvr(plain_path()) |> pairs_from_delim()
 
   # simulate a regex change by stubbing the seeding helper to something absurd
   testthat::local_mocked_bindings(
     seed_candidate = function(candidate) stringr::str_to_lower(candidate)
   )
 
-  after <- clean_cvr(plain_path(), type = "delim", metadata = store, verbose = FALSE)
+  # step 1: under the mock, gen_metadata() really does produce the mocked
+  # value for this pair -- proving the regex change is live, not inert
+  regenerated <- gen_metadata(
+    pairs, "DELIM", plain_path(), "2020 General", "COLORADO", "CLEAR CREEK"
+  )
+  regenerated_candidate <- dplyr::filter(
+    regenerated, raw_candidate == "JOSEPH R BIDEN"
+  )$candidate
 
-  expect_equal(before$candidate, after$candidate)
-  expect_true("Joseph R. Biden Jr." %in% after$candidate)
+  expect_equal(regenerated_candidate, "joseph r biden")
+
+  # step 2: still under the mock, clean_cvr() with a supplied store never
+  # reaches gen_metadata()/seed_candidate() at all, so the store's
+  # hand-corrected value survives untouched -- not the regenerated one
+  after <- clean_cvr(plain_path(), type = "delim", metadata = store, verbose = FALSE)
+  after_candidate <- dplyr::filter(after, raw_candidate == "JOSEPH R BIDEN")$candidate
+
+  expect_true(all(after_candidate == "Joseph R. Biden Jr."))
+  expect_false(any(after_candidate %in% regenerated_candidate))
 })
 
 test_that("gen_metadata is not called at all when metadata is supplied", {
