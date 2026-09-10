@@ -94,6 +94,7 @@ json_seed_context <- function(path) {
 #'   Dominion manifests.
 #'
 #' @return A pairs frame.
+#' @export
 read_json_cvr <- function(path) {
   rlang::check_installed("dominionCVR", reason = "`dominionCVR` is needed to parse JSON files")
 

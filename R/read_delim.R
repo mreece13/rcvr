@@ -55,6 +55,7 @@ fix_fragmentation <- function(raw, path = NA) {
 #'
 #' @return A wide tibble, one row per ballot, with `precinct` and
 #'   `ballot_style` present (possibly all-`NA`).
+#' @export
 read_delim_cvr <- function(path) {
   path <- fs::path_real(path)
 
@@ -99,6 +100,7 @@ read_delim_cvr <- function(path) {
 #' @param dir Path to a directory of CSV or Excel CVRs.
 #'
 #' @return A wide tibble, all files row-bound.
+#' @export
 read_delim_multi_cvr <- function(dir) {
   files <- list.files(dir, recursive = TRUE, full.names = TRUE)
   # `read_delim_multi_cvr()` is public and callable directly, so it must be

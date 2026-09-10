@@ -219,7 +219,12 @@ read_special_tx_montgomery <- function(path) {
 read_special_ca_los_angeles <- function(path) {
   dir <- if (fs::is_dir(path)) path else fs::path_dir(path)
   ballot_path <- if (fs::is_dir(path)) {
-    list.files(path, pattern = "^(?!CandidateCodes).*\\.csv$", full.names = TRUE, perl = TRUE)
+    # `list.files()` has no `perl=` argument (unlike `grepl()`), so a
+    # negative-lookahead `pattern=` here would error the moment this branch
+    # actually ran — list every .csv and drop the codes file by basename
+    # instead.
+    csvs <- list.files(path, pattern = "\\.csv$", full.names = TRUE)
+    csvs[basename(csvs) != "CandidateCodes.csv"]
   } else {
     path
   }
@@ -298,6 +303,7 @@ rcvr_SPECIAL_READERS <- list(
 #' @param state,county County identity, case-insensitive.
 #'
 #' @return `TRUE` or `FALSE`.
+#' @export
 has_special_reader <- function(state, county) {
   special_key(state, county) %in% names(rcvr_SPECIAL_READERS)
 }
@@ -308,6 +314,7 @@ has_special_reader <- function(state, county) {
 #' @param state,county County identity, case-insensitive.
 #'
 #' @return A pairs frame.
+#' @export
 read_special_cvr <- function(path, state, county) {
   key <- special_key(state, county)
 

@@ -214,6 +214,7 @@ infer_magnitude_delim <- function(meta) {
 #'
 #' @return A tibble with the columns in `rcvr_SEED_COLS`, one row per raw
 #'   (contest, candidate) pair.
+#' @export
 gen_metadata <- function(pairs, type, path, election, state, county, verbose = FALSE) {
   key_args <- list(election = election, state = state, county = county)
   bad <- names(key_args)[

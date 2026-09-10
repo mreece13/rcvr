@@ -1,6 +1,6 @@
 Package: rcvr
 Title: Classifies and Cleans Cast Vote Records
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R: 
     person("Mason", "Reece", , "masonreece1317@gmail.com", role = c("aut", "cre"), comment = c(ORCID = "0009-0009-8761-2344"))
 Description: What the package does (one paragraph).
@@ -9,10 +9,11 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Depends: R (>= 4.1.0)
-Suggests: 
+Suggests:
     testthat (>= 3.0.0),
     readxl,
-    arrow
+    arrow,
+    withr
 Config/testthat/edition: 3
 Imports: 
     checkmate,

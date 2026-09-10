@@ -4,6 +4,7 @@
 #' @param verbose (boolean) Controls verbosity of information printed to the user
 #'
 #' @returns (character) One of DELIM, JSON, or XML
+#' @export
 classify_cvr <- function(path, verbose = TRUE) {
   checkmate::assert_character(path)
 
@@ -79,6 +80,7 @@ classify_cvr <- function(path, verbose = TRUE) {
 #'
 #' @return A list with `type` (one of `"DELIM"`, `"DELIM-MULTI"`, `"JSON"`,
 #'   `"XML"`, `"SPECIAL"`) and `path` (the path the reader should be given).
+#' @export
 resolve_reader <- function(path, type = NULL, verbose = FALSE) {
   path <- fs::path_real(path)
 

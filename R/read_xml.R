@@ -84,6 +84,7 @@ xml_ballot <- function(path, i) {
 #'
 #' @return A pairs frame. `raw_party` and `rank` are always `NA` — this
 #'   vendor's format carries neither.
+#' @export
 read_xml_cvr <- function(path) {
   path <- fs::path_real(path)
 
