@@ -34,6 +34,29 @@ join_metadata <- function(pairs, metadata, state = NA, county = NA) {
     -tidyselect::any_of(c("election", "state", "county", "raw_party"))
   )
 
+  # gen_metadata()'s dplyr::distinct(contest, raw_candidate, raw_party) can
+  # emit two store rows sharing (contest, raw_candidate) when a county spells
+  # one candidate's party two ways. The left join below then fans a single
+  # ballot row out into two, silently inflating vote totals -- so this must
+  # be caught before the join runs, not after.
+  dupes <- dplyr::filter(
+    meta,
+    dplyr::n() > 1,
+    .by = c(contest, raw_candidate)
+  )
+  if (nrow(dupes) > 0) {
+    shown <- utils::head(dplyr::distinct(dupes, contest, raw_candidate), 10)
+    cli::cli_abort(
+      c(
+        "{nrow(shown)} {.val {'(contest, raw_candidate)'}} pair{?s} in the metadata store {?has/have} more than one row.",
+        "x" = paste0(shown$contest, " / ", shown$raw_candidate),
+        "i" = "A left join against a duplicated pair fans out ballot rows; reconcile the store for this county before cleaning it."
+      ),
+      class = "rcvr_duplicate_metadata",
+      pairs = dupes
+    )
+  }
+
   # an NA raw_candidate is never exempt: str_detect(NA, ...) is NA, and
   # dplyr::filter() drops NA conditions, so without coalescing to FALSE an
   # NA-keyed pair would silently skip the anti-join and survive the left

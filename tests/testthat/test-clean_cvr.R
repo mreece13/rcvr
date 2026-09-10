@@ -82,6 +82,36 @@ test_that("join_metadata aborts on an NA raw_candidate instead of silently keepi
   expect_true(anyNA(err$pairs$raw_candidate))
 })
 
+test_that("join_metadata aborts on a store that fans out a (contest, raw_candidate) pair", {
+  pairs <- tibble::tibble(
+    cvr_id = 1L,
+    precinct = "001",
+    contest = "MAYOR",
+    raw_candidate = "JANE DOE",
+    raw_party = NA_character_,
+    rank = NA_integer_
+  )
+  # two store rows spelling the same candidate's party two ways -- a fan-out
+  # the left join in join_metadata() would silently multiply rows for
+  store <- tibble::tibble(
+    contest = c("MAYOR", "MAYOR"),
+    raw_candidate = c("JANE DOE", "JANE DOE"),
+    raw_party = c("DEM", "DEMOCRAT"),
+    office = c("MAYOR", "MAYOR"),
+    district = NA_character_,
+    candidate = c("JANE DOE", "JANE DOE"),
+    party_detailed = c("DEMOCRAT", "DEMOCRAT"),
+    magnitude = 1L
+  )
+
+  err <- rlang::catch_cnd(
+    join_metadata(pairs, store, state = "X", county = "Y"),
+    classes = "error"
+  )
+  expect_s3_class(err, "rcvr_duplicate_metadata")
+  expect_true("JANE DOE" %in% err$pairs$raw_candidate)
+})
+
 test_that("clean_cvr tolerates a store slice that still carries its key columns", {
   # spec C hands rcvr a slice filtered on (election, state, county); those
   # columns must not collide with anything or duplicate rows
