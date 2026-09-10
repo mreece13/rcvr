@@ -3,7 +3,12 @@ Title: Classifies and Cleans Cast Vote Records
 Version: 0.1.0
 Authors@R: 
     person("Mason", "Reece", , "masonreece1317@gmail.com", role = c("aut", "cre"), comment = c(ORCID = "0009-0009-8761-2344"))
-Description: What the package does (one paragraph).
+Description: Parses raw Cast Vote Records (CVRs) exported by election
+    vendors in a variety of delimited, JSON, XML, and county-specific
+    formats into a single common pairs frame, and provides tools to seed
+    and reconcile candidate, party, and contest metadata against a
+    persistent store. Built to support large-scale, multi-county election
+    research where CVR formats vary widely by vendor and jurisdiction.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -13,13 +18,13 @@ Suggests:
     testthat (>= 3.0.0),
     readxl,
     arrow,
-    withr
+    withr,
+    dominionCVR
 Config/testthat/edition: 3
-Imports: 
+Imports:
     checkmate,
     cli,
     data.table,
-    dominionCVR,
     dplyr,
     fs,
     jsonlite,
@@ -31,5 +36,7 @@ Imports:
     tidyr,
     tidyselect,
     xml2
+Remotes:
+    github::kuriwaki/dominionCVR
 URL: https://github.com/mreece13/rcvr
 BugReports: https://github.com/mreece13/rcvr/issues
