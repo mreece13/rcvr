@@ -5,8 +5,10 @@ test_that("has_special_reader reports registered counties only", {
 })
 
 test_that("read_special_cvr aborts when no reader is registered", {
+  # COLORADO|CLEAR CREEK stays unregistered on purpose (see the registry test
+  # below); FLORIDA|LEE was used here originally but is now a real entry.
   expect_error(
-    read_special_cvr(fixture_path("special-tx-denton", "cvr.csv"), "FLORIDA", "LEE"),
+    read_special_cvr(fixture_path("special-tx-denton", "cvr.csv"), "COLORADO", "CLEAR CREEK"),
     class = "rcvr_no_special_reader"
   )
 })
@@ -53,6 +55,76 @@ test_that("the Texas Denton reader maps its own column names onto the contract",
 test_that("the FLORIDA WALTON reader emits the pairs contract", {
   pairs <- read_special_cvr(
     fixture_path("special-fl-walton", "cvr.csv"), "FLORIDA", "WALTON"
+  )
+
+  expect_named(
+    pairs,
+    c("cvr_id", "precinct", "contest", "raw_candidate", "raw_party", "rank")
+  )
+  expect_setequal(pairs$contest, c("US PRESIDENT", "MAYOR"))
+  expect_true("undervote" %in% pairs$raw_candidate)
+  expect_true(all(is.na(pairs$rank)))
+})
+
+test_that("the FLORIDA LEE reader emits the pairs contract", {
+  pairs <- read_special_cvr(
+    fixture_path("special-fl-lee"), "FLORIDA", "LEE"
+  )
+
+  expect_named(
+    pairs,
+    c("cvr_id", "precinct", "contest", "raw_candidate", "raw_party", "rank")
+  )
+  expect_setequal(pairs$contest, c("US PRESIDENT", "MAYOR"))
+  expect_true("undervote" %in% pairs$raw_candidate)
+  expect_true(all(is.na(pairs$rank)))
+})
+
+test_that("the FLORIDA MANATEE reader emits the pairs contract", {
+  pairs <- read_special_cvr(
+    fixture_path("special-fl-manatee"), "FLORIDA", "MANATEE"
+  )
+
+  expect_named(
+    pairs,
+    c("cvr_id", "precinct", "contest", "raw_candidate", "raw_party", "rank")
+  )
+  expect_setequal(pairs$contest, c("US PRESIDENT", "MAYOR"))
+  expect_true("undervote" %in% pairs$raw_candidate)
+  expect_true(all(is.na(pairs$rank)))
+})
+
+test_that("the FLORIDA MARION reader emits the pairs contract", {
+  pairs <- read_special_cvr(
+    fixture_path("special-fl-marion"), "FLORIDA", "MARION"
+  )
+
+  expect_named(
+    pairs,
+    c("cvr_id", "precinct", "contest", "raw_candidate", "raw_party", "rank")
+  )
+  expect_setequal(pairs$contest, c("US PRESIDENT", "MAYOR"))
+  expect_true("undervote" %in% pairs$raw_candidate)
+  expect_true(all(is.na(pairs$rank)))
+})
+
+test_that("the FLORIDA SANTA ROSA reader emits the pairs contract", {
+  pairs <- read_special_cvr(
+    fixture_path("special-fl-santa-rosa"), "FLORIDA", "SANTA ROSA"
+  )
+
+  expect_named(
+    pairs,
+    c("cvr_id", "precinct", "contest", "raw_candidate", "raw_party", "rank")
+  )
+  expect_setequal(pairs$contest, c("US PRESIDENT", "MAYOR"))
+  expect_true("undervote" %in% pairs$raw_candidate)
+  expect_true(all(is.na(pairs$rank)))
+})
+
+test_that("the FLORIDA SARASOTA reader emits the pairs contract", {
+  pairs <- read_special_cvr(
+    fixture_path("special-fl-sarasota"), "FLORIDA", "SARASOTA"
   )
 
   expect_named(

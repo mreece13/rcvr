@@ -89,6 +89,16 @@ read_special_fl_walton <- function(path) {
     pairs_from_delim(path)
 }
 
+# FLORIDA | LEE, MANATEE, MARION, SANTA ROSA, SARASOTA
+# several .xls files per county, row-bound, in the same plain DELIM shape as
+# Walton. Ported from cvrs code/functions.R:527-534. Identical across these
+# five counties, so one function is registered under all five keys rather
+# than duplicated.
+read_special_fl_multi <- function(path) {
+  read_delim_multi_cvr(path) |>
+    pairs_from_delim(path)
+}
+
 #' Registered readers for counties whose CVR format fits no general parser
 #'
 #' Names are `"STATE|COUNTY"`, upper case. Each value is a function taking a
@@ -97,7 +107,12 @@ read_special_fl_walton <- function(path) {
 rcvr_SPECIAL_READERS <- list(
   "NEW JERSEY|CUMBERLAND" = read_special_nj_cumberland,
   "TEXAS|DENTON" = read_special_tx_denton,
-  "FLORIDA|WALTON" = read_special_fl_walton
+  "FLORIDA|WALTON" = read_special_fl_walton,
+  "FLORIDA|LEE" = read_special_fl_multi,
+  "FLORIDA|MANATEE" = read_special_fl_multi,
+  "FLORIDA|MARION" = read_special_fl_multi,
+  "FLORIDA|SANTA ROSA" = read_special_fl_multi,
+  "FLORIDA|SARASOTA" = read_special_fl_multi
 )
 
 #' Is a special reader registered for this county?
