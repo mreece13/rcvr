@@ -187,6 +187,81 @@ read_special_tx_montgomery <- function(path) {
     dplyr::select(cvr_id, precinct, contest, raw_candidate, raw_party, rank)
 }
 
+# CALIFORNIA | LOS ANGELES
+# a separate code table (CandidateCodes.csv: code, candidate, contest) joined
+# against a ballot file of cast marks. Ported from cvrs
+# code/function_contests.R:70-78, which only ever reads CandidateCodes.csv to
+# list distinct contests for manual classification (process_special() has no
+# reading branch for this county, same gap as Montgomery) — so the ballot
+# file's own row shape is not confirmed by any source in `cvrs`.
+#
+# Design decision: since CandidateCodes.csv supplies the contest for a code
+# (the source's own read of that file selects `contest` as the third
+# column), and the task brief describes the join as "code -> (candidate,
+# contest)" rather than "code -> candidate", the ballot file is read as one
+# row per cast mark with only a ballot id, a precinct, and a code column
+# (`CVRNumber`, `PrecinctPortion`, `Code`) -- the contest itself comes from
+# the code table, not from the ballot file. A ballot that omits a contest
+# entirely (no code row for it) is completed to "undervote" the same way as
+# every other one-row-per-mark special reader.
+read_special_ca_los_angeles <- function(path) {
+  dir <- if (fs::is_dir(path)) path else fs::path_dir(path)
+  ballot_path <- if (fs::is_dir(path)) {
+    list.files(path, pattern = "^(?!CandidateCodes).*\\.csv$", full.names = TRUE, perl = TRUE)
+  } else {
+    path
+  }
+  codes_path <- fs::path(dir, "CandidateCodes.csv")
+
+  codes <- data.table::fread(
+    codes_path,
+    colClasses = "character",
+    header = FALSE,
+    skip = 1,
+    col.names = c("code", "candidate", "contest")
+  ) |>
+    tibble::as_tibble()
+
+  ballots <- data.table::fread(
+    ballot_path,
+    colClasses = "character",
+    header = TRUE
+  ) |>
+    tibble::as_tibble() |>
+    dplyr::rename(cvr_id = CVRNumber, precinct = PrecinctPortion, code = Code)
+
+  joined <- dplyr::left_join(ballots, codes, dplyr::join_by(code))
+
+  unresolved <- dplyr::filter(joined, is.na(contest))
+  if (nrow(unresolved) > 0) {
+    ids <- unique(unresolved$code)
+    cli::cli_abort(
+      c(
+        "{length(ids)} code{?s} in the CVR export could not be resolved against {.file CandidateCodes.csv}.",
+        "i" = "Unresolved code{?s}: {.val {utils::head(ids, 10)}}"
+      ),
+      class = "rcvr_unresolved_ids",
+      manifest = "CandidateCodes",
+      ids = ids,
+      unresolved = unresolved
+    )
+  }
+
+  joined |>
+    dplyr::transmute(
+      cvr_id = as.integer(cvr_id),
+      precinct = precinct,
+      contest = contest,
+      raw_candidate = stringr::str_squish(candidate)
+    ) |>
+    complete_undervotes() |>
+    dplyr::mutate(
+      raw_party = NA_character_,
+      rank = NA_integer_
+    ) |>
+    dplyr::select(cvr_id, precinct, contest, raw_candidate, raw_party, rank)
+}
+
 #' Registered readers for counties whose CVR format fits no general parser
 #'
 #' Names are `"STATE|COUNTY"`, upper case. Each value is a function taking a
@@ -202,7 +277,8 @@ rcvr_SPECIAL_READERS <- list(
   "FLORIDA|SANTA ROSA" = read_special_fl_multi,
   "FLORIDA|SARASOTA" = read_special_fl_multi,
   "PENNSYLVANIA|ALLEGHENY" = read_special_pa_allegheny,
-  "TEXAS|MONTGOMERY" = read_special_tx_montgomery
+  "TEXAS|MONTGOMERY" = read_special_tx_montgomery,
+  "CALIFORNIA|LOS ANGELES" = read_special_ca_los_angeles
 )
 
 #' Is a special reader registered for this county?

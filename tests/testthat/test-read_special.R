@@ -164,6 +164,31 @@ test_that("the TEXAS MONTGOMERY reader emits the pairs contract", {
   expect_true(all(is.na(pairs$rank)))
 })
 
+test_that("the CALIFORNIA LOS ANGELES reader emits the pairs contract", {
+  pairs <- read_special_cvr(
+    fixture_path("special-ca-los-angeles", "cvr.csv"), "CALIFORNIA", "LOS ANGELES"
+  )
+
+  expect_named(
+    pairs,
+    c("cvr_id", "precinct", "contest", "raw_candidate", "raw_party", "rank")
+  )
+  expect_setequal(pairs$contest, c("US PRESIDENT", "MAYOR"))
+  expect_true("undervote" %in% pairs$raw_candidate)
+  expect_true(all(is.na(pairs$rank)))
+})
+
+test_that("the CALIFORNIA LOS ANGELES reader aborts on an unresolvable code", {
+  err <- rlang::catch_cnd(
+    read_special_cvr(
+      fixture_path("special-ca-los-angeles-badcodes", "cvr.csv"), "CALIFORNIA", "LOS ANGELES"
+    ),
+    classes = "error"
+  )
+  expect_s3_class(err, "rcvr_unresolved_ids")
+  expect_true("99" %in% err$ids)
+})
+
 test_that("a special county seeds through the same gen_metadata as every other type", {
   meta <- read_special_cvr(
     fixture_path("special-tx-denton", "cvr.csv"), "TEXAS", "DENTON"
