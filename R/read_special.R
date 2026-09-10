@@ -99,6 +99,37 @@ read_special_fl_multi <- function(path) {
     pairs_from_delim(path)
 }
 
+# PENNSYLVANIA | ALLEGHENY
+# many CSVs per election, row-bound, with cvrNumber/precinct/contest/candidate
+# columns. Ported from cvrs code/functions.R:539-598 — note the source's
+# hardcoded return path at :595 is a bug confined to that branch and is not
+# ported here.
+read_special_pa_allegheny <- function(path) {
+  files <- if (fs::is_dir(path)) {
+    list.files(path, full.names = TRUE)
+  } else {
+    path
+  }
+
+  lapply(files, function(f) {
+    data.table::fread(f, colClasses = "character", header = TRUE) |>
+      tibble::as_tibble()
+  }) |>
+    dplyr::bind_rows() |>
+    dplyr::transmute(
+      cvr_id = as.integer(cvrNumber),
+      precinct = precinct,
+      contest = contest,
+      raw_candidate = stringr::str_squish(candidate)
+    ) |>
+    complete_undervotes() |>
+    dplyr::mutate(
+      raw_party = NA_character_,
+      rank = NA_integer_
+    ) |>
+    dplyr::select(cvr_id, precinct, contest, raw_candidate, raw_party, rank)
+}
+
 #' Registered readers for counties whose CVR format fits no general parser
 #'
 #' Names are `"STATE|COUNTY"`, upper case. Each value is a function taking a
@@ -112,7 +143,8 @@ rcvr_SPECIAL_READERS <- list(
   "FLORIDA|MANATEE" = read_special_fl_multi,
   "FLORIDA|MARION" = read_special_fl_multi,
   "FLORIDA|SANTA ROSA" = read_special_fl_multi,
-  "FLORIDA|SARASOTA" = read_special_fl_multi
+  "FLORIDA|SARASOTA" = read_special_fl_multi,
+  "PENNSYLVANIA|ALLEGHENY" = read_special_pa_allegheny
 )
 
 #' Is a special reader registered for this county?
