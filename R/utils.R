@@ -187,6 +187,19 @@ rcvr_PAIRS_COLS <- c(
 #'
 #' @return `pairs`, invisibly. Aborts with class `rcvr_bad_pairs` otherwise.
 assert_pairs <- function(pairs, call = rlang::caller_env()) {
+  # all(is.na(x)) is vacuously TRUE for a length-0 vector, so every type
+  # check below is satisfied by an empty frame. A reader whose filters
+  # removed every row would otherwise return a zero-row "success",
+  # indistinguishable from a clean_cvr() run that silently lost a whole
+  # county.
+  if (nrow(pairs) == 0) {
+    cli::cli_abort(
+      "Pairs frame has zero rows.",
+      class = "rcvr_bad_pairs",
+      call = call
+    )
+  }
+
   missing <- setdiff(names(rcvr_PAIRS_COLS), colnames(pairs))
   if (length(missing) > 0) {
     cli::cli_abort(

@@ -6,6 +6,14 @@ test_that("assert_pairs accepts a well-formed pairs frame", {
   expect_silent(assert_pairs(pairs))
 })
 
+test_that("assert_pairs aborts on a zero-row pairs frame instead of passing it vacuously", {
+  pairs <- tibble::tibble(
+    cvr_id = integer(0), precinct = character(0), contest = character(0),
+    raw_candidate = character(0), raw_party = character(0), rank = integer(0)
+  )
+  expect_error(assert_pairs(pairs), class = "rcvr_bad_pairs")
+})
+
 test_that("assert_pairs aborts when a contract column is missing", {
   pairs <- tibble::tibble(cvr_id = 1L, contest = "MAYOR")
   expect_error(assert_pairs(pairs), class = "rcvr_bad_pairs")
