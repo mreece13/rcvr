@@ -150,6 +150,20 @@ test_that("the PENNSYLVANIA ALLEGHENY reader emits the pairs contract", {
   expect_true(all(is.na(pairs$rank)))
 })
 
+test_that("the TEXAS MONTGOMERY reader emits the pairs contract", {
+  pairs <- read_special_cvr(
+    fixture_path("special-tx-montgomery", "cvr.csv"), "TEXAS", "MONTGOMERY"
+  )
+
+  expect_named(
+    pairs,
+    c("cvr_id", "precinct", "contest", "raw_candidate", "raw_party", "rank")
+  )
+  expect_setequal(pairs$contest, c("US PRESIDENT", "MAYOR"))
+  expect_true("undervote" %in% pairs$raw_candidate)
+  expect_true(all(is.na(pairs$rank)))
+})
+
 test_that("a special county seeds through the same gen_metadata as every other type", {
   meta <- read_special_cvr(
     fixture_path("special-tx-denton", "cvr.csv"), "TEXAS", "DENTON"

@@ -130,6 +130,63 @@ read_special_pa_allegheny <- function(path) {
     dplyr::select(cvr_id, precinct, contest, raw_candidate, raw_party, rank)
 }
 
+# TEXAS | MONTGOMERY
+# no ballot IDs in the source file; rows are organised sequentially, one row
+# per (contest, candidate) mark, contest first. Ported from cvrs
+# code/function_contests.R:98-101, which only ever reads this file to list
+# distinct contests (`process_special()` has no reading branch for this
+# county) — so the row shape below (contest, candidate) is inferred from
+# that snippet's `col_select = 1, col_names = "contest"` call against a
+# headerless file, which is all the source confirms.
+#
+# Design decision: reconstruct cvr_id from row order by treating a repeated
+# contest name as a ballot boundary. Each ballot's rows list its contests in
+# a fixed order without repeats (Montgomery is not an RCV county, so a
+# contest appears at most once per ballot); the moment a contest we've
+# already seen since the last boundary shows up again, that is the first row
+# of the next ballot. This does not require every ballot to start with the
+# same first contest (unlike keying off a fixed "first contest" value), so it
+# tolerates a ballot that skips its first race. It does assume no contest is
+# genuinely duplicated within one ballot.
+assign_montgomery_cvr_id <- function(contest) {
+  cvr_id <- integer(length(contest))
+  seen <- character(0)
+  current <- 1L
+
+  for (i in seq_along(contest)) {
+    if (contest[i] %in% seen) {
+      current <- current + 1L
+      seen <- character(0)
+    }
+    seen <- c(seen, contest[i])
+    cvr_id[i] <- current
+  }
+
+  cvr_id
+}
+
+read_special_tx_montgomery <- function(path) {
+  data.table::fread(
+    path,
+    colClasses = "character",
+    header = FALSE,
+    col.names = c("contest", "candidate")
+  ) |>
+    tibble::as_tibble() |>
+    dplyr::transmute(
+      cvr_id = assign_montgomery_cvr_id(contest),
+      precinct = NA_character_,
+      contest = contest,
+      raw_candidate = stringr::str_squish(candidate)
+    ) |>
+    complete_undervotes() |>
+    dplyr::mutate(
+      raw_party = NA_character_,
+      rank = NA_integer_
+    ) |>
+    dplyr::select(cvr_id, precinct, contest, raw_candidate, raw_party, rank)
+}
+
 #' Registered readers for counties whose CVR format fits no general parser
 #'
 #' Names are `"STATE|COUNTY"`, upper case. Each value is a function taking a
@@ -144,7 +201,8 @@ rcvr_SPECIAL_READERS <- list(
   "FLORIDA|MARION" = read_special_fl_multi,
   "FLORIDA|SANTA ROSA" = read_special_fl_multi,
   "FLORIDA|SARASOTA" = read_special_fl_multi,
-  "PENNSYLVANIA|ALLEGHENY" = read_special_pa_allegheny
+  "PENNSYLVANIA|ALLEGHENY" = read_special_pa_allegheny,
+  "TEXAS|MONTGOMERY" = read_special_tx_montgomery
 )
 
 #' Is a special reader registered for this county?

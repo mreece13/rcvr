@@ -5,7 +5,7 @@
 \alias{rcvr_SPECIAL_READERS}
 \title{Registered readers for counties whose CVR format fits no general parser}
 \format{
-An object of class \code{list} of length 9.
+An object of class \code{list} of length 10.
 }
 \usage{
 rcvr_SPECIAL_READERS
