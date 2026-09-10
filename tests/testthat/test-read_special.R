@@ -161,6 +161,15 @@ test_that("the PENNSYLVANIA ALLEGHENY reader ignores a stray non-CSV file", {
   expect_equal(with_stray, clean)
 })
 
+test_that("the PENNSYLVANIA ALLEGHENY reader aborts on a directory with no CSVs", {
+  expect_error(
+    read_special_cvr(
+      fixture_path("special-pa-allegheny-empty"), "PENNSYLVANIA", "ALLEGHENY"
+    ),
+    class = "rcvr_no_files"
+  )
+})
+
 test_that("the TEXAS MONTGOMERY reader emits the pairs contract", {
   pairs <- read_special_cvr(
     fixture_path("special-tx-montgomery", "cvr.csv"), "TEXAS", "MONTGOMERY"
