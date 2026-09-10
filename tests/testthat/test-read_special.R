@@ -50,6 +50,20 @@ test_that("the Texas Denton reader maps its own column names onto the contract",
   expect_true(all(is.na(pairs$rank)))
 })
 
+test_that("the FLORIDA WALTON reader emits the pairs contract", {
+  pairs <- read_special_cvr(
+    fixture_path("special-fl-walton", "cvr.csv"), "FLORIDA", "WALTON"
+  )
+
+  expect_named(
+    pairs,
+    c("cvr_id", "precinct", "contest", "raw_candidate", "raw_party", "rank")
+  )
+  expect_setequal(pairs$contest, c("US PRESIDENT", "MAYOR"))
+  expect_true("undervote" %in% pairs$raw_candidate)
+  expect_true(all(is.na(pairs$rank)))
+})
+
 test_that("a special county seeds through the same gen_metadata as every other type", {
   meta <- read_special_cvr(
     fixture_path("special-tx-denton", "cvr.csv"), "TEXAS", "DENTON"

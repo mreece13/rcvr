@@ -81,6 +81,14 @@ read_special_tx_denton <- function(path) {
     dplyr::select(cvr_id, precinct, contest, raw_candidate, raw_party, rank)
 }
 
+# FLORIDA | WALTON
+# a single wide CSV in the plain DELIM shape (contest||candidate||party
+# columns, 0/1 cast-vote indicators). Ported from cvrs code/functions.R:520-526.
+read_special_fl_walton <- function(path) {
+  read_delim_cvr(path) |>
+    pairs_from_delim(path)
+}
+
 #' Registered readers for counties whose CVR format fits no general parser
 #'
 #' Names are `"STATE|COUNTY"`, upper case. Each value is a function taking a
@@ -88,7 +96,8 @@ read_special_tx_denton <- function(path) {
 #' entry here and one test; nothing else in the package changes.
 rcvr_SPECIAL_READERS <- list(
   "NEW JERSEY|CUMBERLAND" = read_special_nj_cumberland,
-  "TEXAS|DENTON" = read_special_tx_denton
+  "TEXAS|DENTON" = read_special_tx_denton,
+  "FLORIDA|WALTON" = read_special_fl_walton
 )
 
 #' Is a special reader registered for this county?
