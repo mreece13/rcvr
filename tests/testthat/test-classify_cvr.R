@@ -31,6 +31,20 @@ test_that("resolve_reader rejects an unknown declared type", {
   )
 })
 
+test_that("classify_cvr aborts with a classed condition on a directory with no recognised extension", {
+  expect_error(
+    classify_cvr(fixture_path("dir-unrecognized"), verbose = FALSE),
+    class = "rcvr_bad_type"
+  )
+})
+
+test_that("resolve_reader propagates the classed abort when sniffing resolves nothing", {
+  expect_error(
+    resolve_reader(fixture_path("dir-unrecognized"), type = NULL),
+    class = "rcvr_bad_type"
+  )
+})
+
 test_that("resolve_reader falls back to sniffing when type is NULL", {
   res <- resolve_reader(fixture_path("delim-plain", "cvr.csv"), type = NULL)
   expect_equal(res$type, "DELIM")

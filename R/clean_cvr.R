@@ -136,6 +136,14 @@ clean_cvr <- function(
   path <- resolved$path
   type <- resolved$type
 
+  valid_types <- c("DELIM", "DELIM-MULTI", "JSON", "XML", "SPECIAL")
+  if (is.null(type) || !checkmate::test_string(type) || !(type %in% valid_types)) {
+    cli::cli_abort(
+      "Could not resolve a CVR type for {.file {path}}.",
+      class = "rcvr_bad_type"
+    )
+  }
+
   if (type == "SPECIAL" && (is.na(state) || is.na(county))) {
     cli::cli_abort(
       "{.var state} and {.var county} are required for {.val special} CVRs.",

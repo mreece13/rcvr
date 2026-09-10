@@ -62,6 +62,10 @@ classify_cvr <- function(path, verbose = TRUE) {
     if (n_json > 0) return("JSON")
     if (n_xml > 0) return("XML")
 
+    cli::cli_abort(
+      "{.file {path}} holds {n_files} file{?s} but none with a recognised CVR extension (csv, xls, xlsx, json, xml).",
+      class = "rcvr_bad_type"
+    )
   } else {
     cli::cli_abort("{.var path} passed is neither a file nor a directory")
   }

@@ -82,6 +82,13 @@ test_that("join_metadata aborts on an NA raw_candidate instead of silently keepi
   expect_true(anyNA(err$pairs$raw_candidate))
 })
 
+test_that("clean_cvr aborts with a classed condition when the type cannot be resolved", {
+  expect_error(
+    clean_cvr(fixture_path("dir-unrecognized"), verbose = FALSE),
+    class = "rcvr_bad_type"
+  )
+})
+
 test_that("join_metadata aborts on a store that fans out a (contest, raw_candidate) pair", {
   pairs <- tibble::tibble(
     cvr_id = 1L,
