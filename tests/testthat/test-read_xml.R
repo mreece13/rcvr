@@ -54,6 +54,13 @@ test_that("only the marked Options sibling is kept, not the first one", {
   expect_false("ALICE JONES" %in% pairs$raw_candidate)
 })
 
+test_that("read_xml_cvr aborts with a classed condition on a directory with no XML files", {
+  expect_error(
+    read_xml_cvr(fixture_path("xml-empty")),
+    class = "rcvr_no_files"
+  )
+})
+
 test_that("a vote-for-2 contest with two marked options emits two rows", {
   pairs <- read_xml_cvr(fixture_path("xml-vote-for-2"))
   expect_equal(nrow(pairs), 2L)

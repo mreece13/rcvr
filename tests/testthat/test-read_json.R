@@ -48,6 +48,21 @@ test_that("rank is populated for JSON and is not magnitude", {
   expect_type(pairs$rank, "integer")
 })
 
+test_that("read_json_cvr aborts with a classed condition on a directory with no CVR export files", {
+  skip_if_no_dominion()
+  expect_error(
+    read_json_cvr(fixture_path("json-empty")),
+    class = "rcvr_no_files"
+  )
+})
+
+test_that("read_dominion_manifests aborts with a classed condition when a manifest file is missing", {
+  expect_error(
+    read_manifest_list(fixture_path("json-empty"), "DistrictManifest.json"),
+    class = "rcvr_missing_manifest"
+  )
+})
+
 test_that("read_json_cvr aborts when a manifest id fails to resolve", {
   skip_if_no_dominion()
 

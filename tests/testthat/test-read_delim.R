@@ -39,3 +39,10 @@ test_that("read_delim_multi_cvr ignores a stray non-delim file in the directory"
   raw <- read_delim_multi_cvr(fixture_path("delim-multi-mixed"))
   expect_equal(nrow(raw), 4)
 })
+
+test_that("read_delim_multi_cvr aborts with a classed condition on a directory with no delim files", {
+  expect_error(
+    read_delim_multi_cvr(fixture_path("delim-multi-empty")),
+    class = "rcvr_no_files"
+  )
+})

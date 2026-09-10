@@ -82,6 +82,24 @@ test_that("join_metadata aborts on an NA raw_candidate instead of silently keepi
   expect_true(anyNA(err$pairs$raw_candidate))
 })
 
+test_that("clean_cvr aborts with a classed condition when state/county are missing for a special CVR", {
+  expect_error(
+    clean_cvr(
+      fixture_path("special-tx-denton", "cvr.csv"), type = "special", verbose = FALSE
+    ),
+    class = "rcvr_missing_county"
+  )
+})
+
+test_that("join_metadata aborts with a classed condition when metadata is NULL", {
+  pairs <- read_delim_cvr(plain_path()) |> pairs_from_delim()
+
+  expect_error(
+    join_metadata(pairs, NULL, state = "COLORADO", county = "CLEAR CREEK"),
+    class = "rcvr_no_metadata"
+  )
+})
+
 test_that("clean_cvr aborts with a classed condition when the type cannot be resolved", {
   expect_error(
     clean_cvr(fixture_path("dir-unrecognized"), verbose = FALSE),
