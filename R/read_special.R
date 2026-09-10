@@ -106,9 +106,21 @@ read_special_fl_multi <- function(path) {
 # ported here.
 read_special_pa_allegheny <- function(path) {
   files <- if (fs::is_dir(path)) {
-    list.files(path, full.names = TRUE)
+    # Filter by extension so a stray non-CSV file dropped into the county's
+    # directory (a readme, a leftover .xlsx, a Dropbox conflict copy) doesn't
+    # crash `fread` with a raw unclassed error, same as
+    # `read_delim_multi_cvr()` in R/read_delim.R and
+    # `read_special_nj_cumberland()` above.
+    list.files(path, pattern = "\\.csv$", full.names = TRUE)
   } else {
     path
+  }
+
+  if (length(files) == 0) {
+    cli::cli_abort(
+      "No CSV files found in {.file {path}}.",
+      class = "rcvr_no_files"
+    )
   }
 
   lapply(files, function(f) {

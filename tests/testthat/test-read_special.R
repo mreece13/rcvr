@@ -150,6 +150,17 @@ test_that("the PENNSYLVANIA ALLEGHENY reader emits the pairs contract", {
   expect_true(all(is.na(pairs$rank)))
 })
 
+test_that("the PENNSYLVANIA ALLEGHENY reader ignores a stray non-CSV file", {
+  clean <- read_special_cvr(
+    fixture_path("special-pa-allegheny"), "PENNSYLVANIA", "ALLEGHENY"
+  )
+  with_stray <- read_special_cvr(
+    fixture_path("special-pa-allegheny-stray"), "PENNSYLVANIA", "ALLEGHENY"
+  )
+
+  expect_equal(with_stray, clean)
+})
+
 test_that("the TEXAS MONTGOMERY reader emits the pairs contract", {
   pairs <- read_special_cvr(
     fixture_path("special-tx-montgomery", "cvr.csv"), "TEXAS", "MONTGOMERY"
@@ -162,6 +173,29 @@ test_that("the TEXAS MONTGOMERY reader emits the pairs contract", {
   expect_setequal(pairs$contest, c("US PRESIDENT", "MAYOR"))
   expect_true("undervote" %in% pairs$raw_candidate)
   expect_true(all(is.na(pairs$rank)))
+})
+
+test_that("the TEXAS MONTGOMERY reader segments ballots by contest repeat, not by the file's first contest", {
+  # Fixture: ballot 1 votes US PRESIDENT then MAYOR; ballot 2 skips US
+  # PRESIDENT entirely and its first (and only) row is MAYOR. This is the
+  # case that distinguishes the chosen "boundary = a contest we've already
+  # seen this ballot repeats" rule from the rejected alternative
+  # ("boundary = the row's contest equals the file's very first contest"):
+  # the rejected rule never sees "US PRESIDENT" reappear, so it would fold
+  # all three rows into a single ballot with two MAYOR votes and no
+  # reconstructed second ballot at all.
+  pairs <- read_special_cvr(
+    fixture_path("special-tx-montgomery", "cvr.csv"), "TEXAS", "MONTGOMERY"
+  )
+
+  expect_equal(max(pairs$cvr_id), 2L)
+
+  ballot2 <- dplyr::filter(pairs, cvr_id == 2L)
+  expect_setequal(ballot2$contest, c("US PRESIDENT", "MAYOR"))
+  mayor2 <- dplyr::filter(ballot2, contest == "MAYOR")
+  president2 <- dplyr::filter(ballot2, contest == "US PRESIDENT")
+  expect_equal(mayor2$raw_candidate, "JOHN SMITH")
+  expect_equal(president2$raw_candidate, "undervote")
 })
 
 test_that("the CALIFORNIA LOS ANGELES reader emits the pairs contract", {
