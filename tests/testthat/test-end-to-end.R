@@ -22,6 +22,15 @@ test_that("a delim county seeds and cleans end to end", {
   expect_true(all(is.na(res$clean$rank)))
 })
 
+test_that("a redacted ballot cell seeds and cleans end to end instead of aborting its county", {
+  res <- seed_and_clean(
+    fixture_path("delim-redacted", "cvr.csv"), "delim", "COLORADO", "CLEAR CREEK"
+  )
+
+  expect_gt(nrow(res$clean), 0)
+  expect_true("redacted" %in% res$clean$raw_candidate)
+})
+
 test_that("a delim-multi county seeds and cleans end to end", {
   res <- seed_and_clean(
     fixture_path("delim-multi"), "delim", "COLORADO", "DENVER"

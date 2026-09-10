@@ -169,7 +169,7 @@ pairs_from_delim <- function(raw, path = NA) {
     dplyr::mutate(
       candidate = as.character(candidate),
       raw_candidate = dplyr::case_when(
-        raw_candidate %in% rcvr_REDACT_NAMES ~ NA_character_,
+        raw_candidate %in% rcvr_REDACT_NAMES ~ "redacted",
         is.na(raw_candidate) ~ "undervote",
         .default = dplyr::coalesce(candidate, as.character(raw_candidate))
       ),
