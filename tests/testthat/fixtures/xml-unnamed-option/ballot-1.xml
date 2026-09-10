@@ -1,0 +1,13 @@
+<Cvr>
+  <PrecinctSplit>
+    <Name>PRECINCT 001</Name>
+    <Id>1</Id>
+  </PrecinctSplit>
+  <Contests>
+    <Name>MAYOR</Name>
+    <Undervotes>0</Undervotes>
+    <Options>
+      <Value>1</Value>
+    </Options>
+  </Contests>
+</Cvr>

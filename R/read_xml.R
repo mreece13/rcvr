@@ -48,12 +48,17 @@ xml_ballot <- function(path, i) {
     contest <- pluck_chr(con, "Name", 1)
 
     options <- con[names(con) == "Options"]
-    marked <- purrr::map_chr(options, function(opt) {
-      candidate <- xml_option(opt)
-      if (is.null(candidate)) NA_character_ else candidate
-    }) |>
-      unname()
-    marked <- marked[!is.na(marked)]
+    resolved <- purrr::map(options, xml_option)
+    # xml_option() returns NULL for an unmarked Options sibling (drop it --
+    # it cast no vote) and NA_character_ for a *marked* one with neither a
+    # Name nor write-in text (a vote was cast, we just can't identify it --
+    # keep it as NA so it is never confused with "no marks were cast at
+    # all", which is what collapses to "undervote" below)
+    is_unmarked <- vapply(resolved, is.null, logical(1))
+    marked <- vapply(
+      resolved[!is_unmarked], function(x) if (is.null(x)) NA_character_ else x,
+      character(1)
+    ) |> unname()
 
     # no marked option (Undervotes == "1", or every Options sibling
     # unmarked) becomes a single undervote row
@@ -102,10 +107,22 @@ read_xml_cvr <- function(path) {
     )
   }
 
-  pairs <- purrr::imap(files, xml_ballot) |>
-    purrr::list_rbind() |>
-    # an undervote row takes precedence over an empty candidate name
-    dplyr::filter(!is.na(raw_candidate))
+  raw <- purrr::imap(files, xml_ballot) |>
+    purrr::list_rbind()
 
-  assert_pairs(pairs)
+  # a marked Options sibling (Value = 1) with neither a Name nor
+  # WriteInData/Text is not the same thing as an undervote -- a vote was
+  # cast, we just can't identify it -- so it must abort rather than
+  # disappear through the same filter that legitimately drops "no marked
+  # option" rows (those are synthesised as "undervote" upstream in
+  # xml_ballot(), never NA)
+  unnamed <- dplyr::filter(raw, is.na(raw_candidate))
+  if (nrow(unnamed) > 0) {
+    cli::cli_abort(
+      "{nrow(unnamed)} marked option{?s} in {.file {path}} {?has/have} no {.field Name} and no write-in text.",
+      class = "rcvr_unnamed_option"
+    )
+  }
+
+  assert_pairs(raw)
 }

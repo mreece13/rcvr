@@ -107,7 +107,7 @@ join_metadata <- function(pairs, metadata, state = NA, county = NA) {
 #' @param state The state name, upper case. Required when generating metadata.
 #' @param county The county name, upper case. Required when generating metadata.
 #'
-#' @returns Either a `tibble` with the cleaned CVR (`return_metadata=FALSE`) or a list containing both the cleaned CVR and the generated metadata (`generate_metadata=TRUE` and `return_metadata=FALSE`) or just the generated metadata (`metadata_only=TRUE`) or a path to the output file (`write_dir` is non-NULL).
+#' @returns Either a `tibble` with the cleaned CVR (`return_metadata=FALSE`) or a list containing both the cleaned CVR and the generated metadata (`generate_metadata=TRUE` and `return_metadata=FALSE`) or just the generated metadata (`metadata_only=TRUE`) or a path to the output file (`write_path` is non-NULL).
 #' @export
 #'
 clean_cvr <- function(
@@ -129,6 +129,13 @@ clean_cvr <- function(
       "{.var metadata} is non-NULL so {.var generate_metadata} is being ignored."
     )
     generate_metadata <- FALSE
+  }
+
+  if (!checkmate::test_string(path, na.ok = FALSE)) {
+    cli::cli_abort(
+      "{.arg path} must be a single non-NA string.",
+      class = "rcvr_bad_path"
+    )
   }
 
   path <- fs::path_real(path)

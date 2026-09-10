@@ -59,16 +59,21 @@ fix_fragmentation <- function(raw, path = NA) {
 read_delim_cvr <- function(path) {
   path <- fs::path_real(path)
 
+  # checked ahead of is_header(), which assumes a csv/xls/xlsx extension and
+  # otherwise leaves its own `d` undefined -- an unrecognised extension must
+  # produce this abort, not a bare "object 'd' not found"
+  ext <- fs::path_ext(path) |> stringr::str_to_upper()
+  if (!(ext %in% c("CSV", "XLS", "XLSX"))) {
+    cli::cli_abort("{.file {path}} is not a CSV or Excel file")
+  }
+
   if (is_header(path)) {
     raw <- header_processor(path)
   } else {
-    ext <- fs::path_ext(path) |> stringr::str_to_upper()
-
     raw <- switch(ext,
       "CSV" = data.table::fread(path, colClasses = "character", header = TRUE),
       "XLS" = readxl::read_excel(path, col_types = "text", .name_repair = "unique_quiet"),
-      "XLSX" = readxl::read_excel(path, col_types = "text", .name_repair = "unique_quiet"),
-      cli::cli_abort("{.file {path}} is not a CSV or Excel file")
+      "XLSX" = readxl::read_excel(path, col_types = "text", .name_repair = "unique_quiet")
     )
   }
 

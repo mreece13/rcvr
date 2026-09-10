@@ -13,7 +13,14 @@ gen_patterns <- function(strings) {
   patterns <- c()
 
   for (s in strings) {
-    s <- gsub("([\\[\\]\\(\\)\\{\\}\\^\\$\\*\\+\\?\\|\\\\])", "\\\\\\1", s)
+    # gsub()'s default TRE engine treats a backslash inside a bracket
+    # expression as a literal character, not an escape, so
+    # "([\\[\\]...])" terminated the class at the first "]" and never
+    # escaped anything -- inert unless every abbreviation happens to be
+    # plain alphabetics, as they are today. perl = TRUE gives PCRE
+    # semantics, where the backslash-escaped metacharacters inside the
+    # class are honoured.
+    s <- gsub("([\\[\\]\\(\\)\\{\\}\\^\\$\\*\\+\\?\\|\\\\\\.])", "\\\\\\1", s, perl = TRUE)
 
     r1 <- paste0("^", s, "$")
     r2 <- paste0("^", s, " ")

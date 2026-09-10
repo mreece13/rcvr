@@ -57,6 +57,17 @@ test_that("magnitude is NA when no 'Vote For' string is present, never a rank", 
   expect_false("rank" %in% colnames(meta))
 })
 
+test_that("gen_patterns escapes a metacharacter-bearing abbreviation for TRE, not just PCRE", {
+  # in TRE (gsub()'s default engine), a backslash inside a bracket
+  # expression is literal, so "([\\[\\]...])" terminates the class at the
+  # first "]" and never actually escapes anything; gen_patterns() must
+  # produce a pattern where "C.O" (a literal abbreviation containing a
+  # metacharacter) matches only the literal string, not "C" + any-char + "O"
+  pattern <- gen_patterns("C.O")
+  expect_true(stringr::str_detect("C.O", stringr::regex(pattern, TRUE)))
+  expect_false(stringr::str_detect("CXO", stringr::regex(pattern, TRUE)))
+})
+
 test_that("seed_party recognises abbreviations in the party field and in the name", {
   expect_equal(seed_party("DEM", NA_character_), "DEMOCRAT")
   expect_equal(seed_party("REP", NA_character_), "REPUBLICAN")

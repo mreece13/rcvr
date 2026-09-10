@@ -54,6 +54,13 @@ test_that("only the marked Options sibling is kept, not the first one", {
   expect_false("ALICE JONES" %in% pairs$raw_candidate)
 })
 
+test_that("a marked Options sibling with no Name and no WriteInData aborts instead of silently dropping the mark", {
+  expect_error(
+    read_xml_cvr(fixture_path("xml-unnamed-option")),
+    class = "rcvr_unnamed_option"
+  )
+})
+
 test_that("read_xml_cvr aborts with a classed condition on a directory with no XML files", {
   expect_error(
     read_xml_cvr(fixture_path("xml-empty")),

@@ -42,7 +42,7 @@ clean_cvr(
 \item{county}{The county name, upper case. Required when generating metadata.}
 }
 \value{
-Either a \code{tibble} with the cleaned CVR (\code{return_metadata=FALSE}) or a list containing both the cleaned CVR and the generated metadata (\code{generate_metadata=TRUE} and \code{return_metadata=FALSE}) or just the generated metadata (\code{metadata_only=TRUE}) or a path to the output file (\code{write_dir} is non-NULL).
+Either a \code{tibble} with the cleaned CVR (\code{return_metadata=FALSE}) or a list containing both the cleaned CVR and the generated metadata (\code{generate_metadata=TRUE} and \code{return_metadata=FALSE}) or just the generated metadata (\code{metadata_only=TRUE}) or a path to the output file (\code{write_path} is non-NULL).
 }
 \description{
 Main Cleaning Function

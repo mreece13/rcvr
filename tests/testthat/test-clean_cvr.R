@@ -82,6 +82,13 @@ test_that("join_metadata aborts on an NA raw_candidate instead of silently keepi
   expect_true(anyNA(err$pairs$raw_candidate))
 })
 
+test_that("clean_cvr aborts with a classed condition when path is missing, not an unclassed fs::path_real error", {
+  expect_error(
+    clean_cvr(verbose = FALSE),
+    class = "rcvr_bad_path"
+  )
+})
+
 test_that("clean_cvr aborts with a classed condition when state/county are missing for a special CVR", {
   expect_error(
     clean_cvr(

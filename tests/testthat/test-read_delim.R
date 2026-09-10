@@ -30,6 +30,14 @@ test_that("pairs_from_delim marks a skipped contest as undervote", {
   expect_equal(mayor$raw_candidate, "undervote")
 })
 
+test_that("read_delim_cvr aborts with a real error, not object 'd' not found, on a bad extension", {
+  err <- rlang::catch_cnd(
+    read_delim_cvr(fixture_path("delim-bad-ext", "cvr.txt")),
+    classes = "error"
+  )
+  expect_match(conditionMessage(err), "not a CSV or Excel file")
+})
+
 test_that("read_delim_multi_cvr row-binds every file in the directory", {
   raw <- read_delim_multi_cvr(fixture_path("delim-multi"))
   expect_equal(nrow(raw), 4)
