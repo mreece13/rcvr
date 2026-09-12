@@ -6,16 +6,22 @@
 \usage{
 clean_cvr(
   path = NA,
+  type = NULL,
   metadata = NULL,
   generate_metadata = FALSE,
   return_metadata = FALSE,
   metadata_only = FALSE,
   verbose = TRUE,
-  write_path = NULL
+  write_path = NULL,
+  election = NA_character_,
+  state = NA_character_,
+  county = NA_character_
 )
 }
 \arguments{
 \item{path}{Path to the CVR file or directory}
+
+\item{type}{(optional) The declared CVR type from the registry: one of \code{"delim"}, \code{"json"}, \code{"xml"}, \code{"special"}. When \code{NULL} (default) the type is sniffed from the files on disk, which aborts on directories holding more than one file type.}
 
 \item{metadata}{(optional) Existing metadata to merge into the CVR}
 
@@ -28,9 +34,15 @@ clean_cvr(
 \item{verbose}{Verbose output? Default \code{FALSE}}
 
 \item{write_path}{(optional) Path to write a parquet file, in which case the function only returns a path}
+
+\item{election}{The election label, e.g. \code{"2020 General"}. Required when generating metadata.}
+
+\item{state}{The state name, upper case. Required when generating metadata.}
+
+\item{county}{The county name, upper case. Required when generating metadata.}
 }
 \value{
-Either a \code{tibble} with the cleaned CVR (\code{return_metadata=FALSE}) or a list containing both the cleaned CVR and the generated metadata (\code{generate_metadata=TRUE} and \code{return_metadata=FALSE}) or just the generated metadata (\code{metadata_only=TRUE}) or a path to the output file (\code{write_dir} is non-NULL).
+Either a \code{tibble} with the cleaned CVR (\code{return_metadata=FALSE}) or a list containing both the cleaned CVR and the generated metadata (\code{generate_metadata=TRUE} and \code{return_metadata=FALSE}) or just the generated metadata (\code{metadata_only=TRUE}) or a path to the output file (\code{write_path} is non-NULL).
 }
 \description{
 Main Cleaning Function

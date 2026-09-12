@@ -25,6 +25,11 @@ rcvr_DROP_COLS <- c(
   "Is Current"
 )
 
+# appended by `header_processor()` to make duplicate column names unique.
+# Chosen so it cannot occur in vendor data and can be stripped unambiguously
+# before the name is split back into (contest, candidate, party).
+rcvr_DUP_SENTINEL <- "__RCVRDUP__"
+
 # various permutations of a label that the cell is redacted
 rcvr_REDACT_NAMES = c("X", "redacted for voter privacy", "REDACTED", "Redacted", "*", "redacted", "Redacted per 24-27-205.5 (4)(b)(III) C.R.S.")
 
@@ -101,7 +106,12 @@ header_processor <- function(path, n = Inf) {
       skip=1,
       nrows=n,
       header=TRUE,
-      colClasses=character()
+      # `character()` (a zero-length vector) is a no-op for `colClasses`, which
+      # let fread's type inference silently turn all-numeric-looking metadata
+      # columns (e.g. a Precinct column of "001"/"002") into integers,
+      # dropping the leading zero. The pairs-frame contract requires
+      # character; force it here as done in `read_delim_cvr()`.
+      colClasses="character"
     )
 
   } else if (stringr::str_detect(path, "xls$|xlsx$|XLS$|XLSX$")) {
@@ -131,9 +141,91 @@ header_processor <- function(path, n = Inf) {
     iconv(to = "UTF-8", sub = "") |>
     stringr::str_remove_all("^V\\d+") |>
     stringr::str_remove_all("^\\|\\|") |>
-    stringr::str_remove_all("^\\|\\|") |> 
-    make.unique(sep = "_")
+    stringr::str_remove_all("^\\|\\|") |>
+    # a metadata column (e.g. CvrNumber, Precinct) with blank candidate/party
+    # header cells pastes as e.g. "CvrNumber||||"; fread reads a blank cell as
+    # "" (not NA) once colClasses forces character, so the "||NA" removals
+    # above don't catch it. A key column must never carry this artefact, so
+    # strip trailing empty "||" components here too.
+    stringr::str_remove_all("(\\|\\|)+$") |>
+    make.unique(sep = rcvr_DUP_SENTINEL)
 
   df[-c(bad_rows, 1, 2), ]
 
+}
+
+# Pairs the metadata store never seeds a row for. gen_metadata() drops
+# undervote/overvote/write-in/"0"/redacted from the seed after cleaning
+# raw_candidate via seed_candidate(), so join_metadata()'s anti-join check
+# must exempt the same raw pairs or it would abort a county on perfectly good
+# ballots (a write-in vote, an overvote, a redacted cell). One regex serves
+# both call sites so they cannot drift: "undervote"/"overvote"/"0" are
+# spelled identically raw and cleaned; "Write" is the same substring test
+# seed_candidate() uses to collapse a raw write-in spelling to the cleaned
+# "WI"; and the literal "WI" is included so gen_metadata()'s post-seed filter
+# (which tests the already-cleaned `candidate` column) keeps its exact prior
+# behaviour. "redacted" is the literal sentinel pairs_from_delim() maps every
+# rcvr_REDACT_NAMES spelling to (R/read_delim.R), so a redacted cell never
+# has to survive as an NA raw_candidate, which join_metadata() would coalesce
+# to non-exempt and abort on.
+rcvr_UNSEEDED_RE <- stringr::regex("^undervote$|^overvote$|^WI$|^0$|^redacted$|Write", ignore_case = TRUE)
+
+# the column contract every reader must satisfy
+rcvr_PAIRS_COLS <- c(
+  cvr_id = "integer",
+  precinct = "character",
+  contest = "character",
+  raw_candidate = "character",
+  raw_party = "character",
+  rank = "integer"
+)
+
+#' Assert that a reader returned a valid pairs frame
+#'
+#' @param pairs A tibble returned by one of the `read_*_cvr()` readers.
+#' @param call The calling environment, for error reporting.
+#'
+#' @return `pairs`, invisibly. Aborts with class `rcvr_bad_pairs` otherwise.
+assert_pairs <- function(pairs, call = rlang::caller_env()) {
+  # all(is.na(x)) is vacuously TRUE for a length-0 vector, so every type
+  # check below is satisfied by an empty frame. A reader whose filters
+  # removed every row would otherwise return a zero-row "success",
+  # indistinguishable from a clean_cvr() run that silently lost a whole
+  # county.
+  if (nrow(pairs) == 0) {
+    cli::cli_abort(
+      "Pairs frame has zero rows.",
+      class = "rcvr_bad_pairs",
+      call = call
+    )
+  }
+
+  missing <- setdiff(names(rcvr_PAIRS_COLS), colnames(pairs))
+  if (length(missing) > 0) {
+    cli::cli_abort(
+      "Pairs frame is missing required column{?s}: {.field {missing}}",
+      class = "rcvr_bad_pairs",
+      call = call
+    )
+  }
+
+  actual <- vapply(pairs[names(rcvr_PAIRS_COLS)], typeof, character(1))
+  expected <- unname(rcvr_PAIRS_COLS)
+  # R stores integers as "integer" and characters as "character"; logical NA
+  # columns are tolerated only when the column is entirely NA
+  bad <- names(rcvr_PAIRS_COLS)[
+    actual != expected & !vapply(pairs[names(rcvr_PAIRS_COLS)], function(x) all(is.na(x)), logical(1))
+  ]
+  if (length(bad) > 0) {
+    cli::cli_abort(
+      c(
+        "Pairs frame column{?s} {.field {bad}} {?has/have} the wrong type.",
+        "i" = "Expected {.val {unname(rcvr_PAIRS_COLS[bad])}}, got {.val {unname(actual[bad])}}."
+      ),
+      class = "rcvr_bad_pairs",
+      call = call
+    )
+  }
+
+  invisible(pairs)
 }

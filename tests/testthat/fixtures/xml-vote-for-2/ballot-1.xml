@@ -1,0 +1,18 @@
+<Cvr>
+  <PrecinctSplit>
+    <Name>PRECINCT 001</Name>
+    <Id>1</Id>
+  </PrecinctSplit>
+  <Contests>
+    <Name>CITY COUNCIL</Name>
+    <Undervotes>0</Undervotes>
+    <Options>
+      <Name>ALICE JONES</Name>
+      <Value>1</Value>
+    </Options>
+    <Options>
+      <Name>BOB SMITH</Name>
+      <Value>1</Value>
+    </Options>
+  </Contests>
+</Cvr>

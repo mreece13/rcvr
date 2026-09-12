@@ -1,0 +1,22 @@
+<Cvr>
+  <PrecinctSplit>
+    <Name>PRECINCT 002</Name>
+    <Id>2</Id>
+  </PrecinctSplit>
+  <Contests>
+    <Name>US PRESIDENT</Name>
+    <Undervotes>0</Undervotes>
+    <Options>
+      <Name>DONALD J TRUMP</Name>
+      <Value>1</Value>
+    </Options>
+  </Contests>
+  <Contests>
+    <Name>MAYOR</Name>
+    <Undervotes>1</Undervotes>
+    <Options>
+      <Name/>
+      <Value>0</Value>
+    </Options>
+  </Contests>
+</Cvr>

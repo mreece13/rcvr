@@ -1,0 +1,6 @@
+{"Version": "5.10", "List": [
+  {"Description": "JOSEPH R BIDEN", "Id": 100, "ContestId": 10, "Type": "Regular"},
+  {"Description": "DONALD J TRUMP", "Id": 101, "ContestId": 10, "Type": "Regular"},
+  {"Description": "ALEX STONE", "Id": 102, "ContestId": 11, "Type": "Regular"},
+  {"Description": "RIVER KIM", "Id": 103, "ContestId": 11, "Type": "Regular"}
+]}

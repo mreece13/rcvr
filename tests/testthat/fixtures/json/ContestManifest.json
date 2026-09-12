@@ -1,0 +1,4 @@
+{"Version": "5.10", "List": [
+  {"Description": "US PRESIDENT", "Id": 10, "DistrictId": 1, "VoteFor": 1, "NumOfRanks": 0},
+  {"Description": "COUNTY COMMISSIONER", "Id": 11, "DistrictId": 2, "VoteFor": 2, "NumOfRanks": 0}
+]}
