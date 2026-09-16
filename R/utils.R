@@ -30,6 +30,88 @@ rcvr_DROP_COLS <- c(
 # before the name is split back into (contest, candidate, party).
 rcvr_DUP_SENTINEL <- "__RCVRDUP__"
 
+# an unnamed column, as the delimited readers name it: `data.table::fread()`
+# falls back to the column index (`V15`), `readxl`'s "unique_quiet" repair to
+# `...15`. One pattern serves every delim reader.
+rcvr_PLACEHOLDER_RE <- "^(V\\d+|\\.\\.\\.\\d+)$"
+
+#' Resolve runs of unnamed columns into the contest they continue
+#'
+#' In a delimited CVR export, a named contest column followed by a run of
+#' unnamed columns is one contest spread over several columns. For a plain
+#' export (one column per contest) that means a multi-seat race: each column
+#' holds one of the voter's N selections, so the contest's magnitude is the
+#' length of the run plus one.
+#'
+#' A run with no named predecessor -- it starts at column 1, or the column
+#' before it is a key/metadata column rather than a contest -- is left alone
+#' and warned about. There is no name to inherit, so guessing one would invent
+#' a contest.
+#'
+#' NB: this assumes the repeated columns are *seats*, not *ranks*. A
+#' ranked-choice delimited export would also repeat columns and this rule
+#' would inflate its magnitude; no delim-format contest in the corpus is RCV,
+#' so no guard is applied. If `rcvr` later ingests RCV delim exports, this
+#' needs a type check.
+#'
+#' @param nms Character vector of column names, in column order.
+#' @param sentinel Append `rcvr_DUP_SENTINEL` and a run index to the inherited
+#'   name (`TRUE`, the default), keeping every name unique so the columns
+#'   survive to `pairs_from_delim()`, which strips the sentinel again. `FALSE`
+#'   assigns the bare parent name, for callers that build the final name from
+#'   further header rows and de-duplicate themselves.
+#'
+#' @return A list with `names` (the corrected vector) and `magnitude`, a named
+#'   integer vector of `contest -> magnitude` for the contests that were
+#'   extended. `magnitude` is always empty when `sentinel = FALSE`.
+resolve_placeholder_cols <- function(nms, sentinel = TRUE) {
+  out <- list(names = nms, magnitude = integer(0))
+
+  ind <- which(stringr::str_detect(nms, rcvr_PLACEHOLDER_RE))
+  if (length(ind) == 0) {
+    return(out)
+  }
+
+  # a placeholder run must not inherit the name of a key or metadata column:
+  # `CvrNumber` followed by a blank junk column is not a two-seat race
+  not_a_contest <- c(
+    rcvr_DROP_COLS, unname(rcvr_RENAME_COLS), unique(names(rcvr_RENAME_COLS))
+  )
+
+  unresolved <- integer(0)
+
+  for (r in find_consecutive_ranges(ind)) {
+    parent_i <- r[1] - 1
+    if (parent_i < 1 || parent_i %in% ind || nms[parent_i] %in% not_a_contest) {
+      unresolved <- c(unresolved, r)
+      next
+    }
+
+    parent <- nms[parent_i]
+    out$names[r] <- if (sentinel) {
+      paste0(parent, rcvr_DUP_SENTINEL, seq_along(r))
+    } else {
+      parent
+    }
+    # the run length is an exact column count, not an inference
+    if (sentinel) out$magnitude[parent] <- length(r) + 1L
+  }
+
+  if (length(unresolved) > 0) {
+    bad <- nms[unresolved]
+    cli::cli_warn(
+      c(
+        "{length(bad)} unnamed column{?s} {?has/have} no named contest to continue.",
+        "x" = "{.field {bad}}",
+        "i" = "They are left as-is and will appear in the metadata as contests of their own."
+      ),
+      class = "rcvr_unresolved_placeholder_cols"
+    )
+  }
+
+  out
+}
+
 # various permutations of a label that the cell is redacted
 rcvr_REDACT_NAMES = c("X", "redacted for voter privacy", "REDACTED", "Redacted", "*", "redacted", "Redacted per 24-27-205.5 (4)(b)(III) C.R.S.")
 
@@ -126,6 +208,17 @@ header_processor <- function(path, n = Inf) {
       col_types = "text",
     )
   }
+
+  # A blank contest cell in this format means "same contest as the column to
+  # the left, next candidate" -- the vendor writes the contest name once over
+  # a merged range of candidate columns. Resolve those names before the paste
+  # below, or the "^V\\d+" strip blanks them and the candidate name ends up in
+  # the contest position. `sentinel = FALSE` because the pasted name already
+  # carries the candidate and party, make.unique() de-duplicates what is left,
+  # and a sentinel inserted here would sit mid-string where
+  # `pairs_from_delim()` cannot strip it. No magnitude is inferred: a run here
+  # is extra candidates, not extra seats.
+  colnames(df) <- resolve_placeholder_cols(colnames(df), sentinel = FALSE)$names
 
   ncols = ncol(df)
 

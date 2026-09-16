@@ -173,35 +173,11 @@ find_consecutive_ranges <- function(indices) {
   ranges
 }
 
-# infer magnitude from runs of `...N` placeholder contest columns, which is
-# how multi-seat contests appear in delimited exports
-infer_magnitude_delim <- function(meta) {
-  if (!isTRUE(any(meta$magnitude > 0, na.rm = TRUE))) {
-    return(meta)
-  }
-
-  cs <- dplyr::pull(meta, contest)
-  cs_ind <- which(stringr::str_detect(cs, "^\\.\\.\\.\\d+$"))
-  if (length(cs_ind) == 0) return(meta)
-
-  ranges <- find_consecutive_ranges(cs_ind)
-  mags <- rep.int(0, length(cs))
-
-  for (r in ranges) {
-    mags[c(r[1] - 1, r)] <- cs[c(r[1] - 1, r)] |> unique() |> length()
-  }
-
-  meta |>
-    dplyr::mutate(magnitude2 = dplyr::na_if(mags, 0)) |>
-    dplyr::group_by(contest) |>
-    tidyr::fill(magnitude2, .direction = "up") |>
-    dplyr::ungroup() |>
-    dplyr::mutate(
-      magnitude2 = tidyr::replace_na(magnitude2, 1),
-      magnitude = dplyr::coalesce(magnitude, as.integer(magnitude2)),
-      magnitude2 = NULL
-    )
-}
+# NB: `infer_magnitude_delim()` used to run here. It tried to read magnitude
+# off placeholder contest *rows* in the metadata, which was too late: the
+# pairs frame still carried the placeholder name, so join_metadata() aborted
+# with `rcvr_unmatched_pairs`. The rule now runs on the raw column names, in
+# `resolve_placeholder_cols()` (R/utils.R).
 
 #' Seed metadata rows for a county
 #'
@@ -264,7 +240,16 @@ gen_metadata <- function(pairs, type, path, election, state, county, verbose = F
     dplyr::arrange(ballot_order)
 
   if (type %in% c("DELIM", "DELIM-MULTI")) {
-    meta <- infer_magnitude_delim(meta)
+    # resolve_placeholder_cols() counted the columns of each multi-seat
+    # contest at read time. That is an exact count, so it is only used where
+    # an explicit "Vote For=N" in the contest name did not already supply one.
+    mag <- attr(pairs, "rcvr_magnitude")
+    if (!is.null(mag) && length(mag) > 0) {
+      meta <- dplyr::mutate(
+        meta,
+        magnitude = dplyr::coalesce(magnitude, unname(mag[contest]))
+      )
+    }
   } else if (type == "JSON") {
     # district and magnitude come from the Dominion manifests, not from regex
     ctx <- json_seed_context(path)
