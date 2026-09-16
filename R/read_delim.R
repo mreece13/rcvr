@@ -97,7 +97,15 @@ read_delim_cvr <- function(path) {
     }
   }
 
-  tibble::as_tibble(raw)
+  # after the canonicalisation loop, so a canonical rename is in place and can
+  # never be mistaken for a placeholder, and so a placeholder run can never
+  # inherit a key column's name
+  resolved <- resolve_placeholder_cols(colnames(raw))
+  colnames(raw) <- resolved$names
+
+  raw <- tibble::as_tibble(raw)
+  attr(raw, "rcvr_magnitude") <- resolved$magnitude
+  raw
 }
 
 #' Read a directory of delimited CVR files
@@ -120,9 +128,20 @@ read_delim_multi_cvr <- function(dir) {
     )
   }
 
-  delim_files |>
-    lapply(read_delim_cvr) |>
-    dplyr::bind_rows()
+  raws <- lapply(delim_files, read_delim_cvr)
+
+  out <- dplyr::bind_rows(raws)
+
+  # `bind_rows()` drops the attribute, and two files in one directory may each
+  # contribute a magnitude for the same contest. Take the widest run seen.
+  mags <- unlist(lapply(raws, attr, "rcvr_magnitude"))
+  attr(out, "rcvr_magnitude") <- if (length(mags) > 0) {
+    vapply(split(as.integer(mags), names(mags)), max, integer(1))
+  } else {
+    integer(0)
+  }
+
+  out
 }
 
 #' Reshape a wide delimited CVR into the pairs frame
@@ -133,6 +152,11 @@ read_delim_multi_cvr <- function(dir) {
 #' @return A pairs frame: `cvr_id`, `precinct`, `contest`, `raw_candidate`,
 #'   `raw_party`, `rank`.
 pairs_from_delim <- function(raw, path = NA) {
+  # the reader recorded one magnitude per multi-column contest; dplyr drops
+  # the attribute, so carry it across by hand onto the returned pairs frame,
+  # where gen_metadata() picks it up
+  magnitude <- attr(raw, "rcvr_magnitude")
+
   raw <- fix_fragmentation(raw, path) |>
     dplyr::select(-tidyselect::any_of(c("ballot_style", "ballot_style2")))
 
@@ -187,6 +211,8 @@ pairs_from_delim <- function(raw, path = NA) {
       )
     ) |>
     dplyr::select(cvr_id, precinct, contest, raw_candidate, raw_party, rank)
+
+  attr(pairs, "rcvr_magnitude") <- magnitude
 
   assert_pairs(pairs)
 }
