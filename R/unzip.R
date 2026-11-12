@@ -7,14 +7,18 @@
 #' ballot images and PDFs.
 #'
 #' A zip whose only CVR content is one or more nested zips (an export of
-#' exports) is not unpacked recursively: that is ambiguous about which inner
-#' export is meant, so it aborts and the caller should point at an inner zip.
+#' exports: Hardin OH, Hamilton TN) is not unpacked recursively, since it is
+#' ambiguous which inner export is meant. Name the inner export with `::`
+#' instead: `"outer.zip::CVR_Export_20220825132943.zip"`. Any depth works
+#' (`"a.zip::b.zip::c.zip"`); each inner name is the member path inside the
+#' zip before it.
 #'
 #' If the extracted tree is a single top-level directory, that directory is
 #' returned, so a Dominion export zipped with its folder resolves to the
 #' folder holding the manifests.
 #'
-#' @param path Path to a `.zip` file.
+#' @param path Path to a `.zip` file, optionally followed by `::member.zip`
+#'   segments naming a nested zip.
 #' @param exdir Directory to extract into. Defaults to a fresh directory under
 #'   `tempdir()`; the caller is responsible for deleting it.
 #'
@@ -22,6 +26,24 @@
 #'   top-level subdirectory.
 #' @keywords internal
 unzip_cvr <- function(path, exdir = tempfile("rcvr_zip_")) {
+  parts <- strsplit(path, "::", fixed = TRUE)[[1]]
+  if (length(parts) > 1) {
+    checkmate::assert_file_exists(parts[1])
+    fs::dir_create(exdir)
+    stage <- file.path(exdir, "nested")
+    member <- parts[2]
+    utils::unzip(parts[1], files = member, exdir = stage)
+    inner <- file.path(stage, member)
+    if (!file.exists(inner)) {
+      cli::cli_abort(
+        "{.file {parts[1]}} has no member {.file {member}}.",
+        class = "rcvr_no_files"
+      )
+    }
+    rest <- paste(c(inner, parts[-(1:2)]), collapse = "::")
+    return(unzip_cvr(rest, exdir = file.path(exdir, "cvr")))
+  }
+
   checkmate::assert_file_exists(path)
   fs::dir_create(exdir)
 
@@ -56,7 +78,7 @@ unzip_cvr <- function(path, exdir = tempfile("rcvr_zip_")) {
     inner_zips <- inner[stringr::str_detect(inner, stringr::regex("\\.zip$", ignore_case = TRUE))]
     cli::cli_abort(
       c("{.file {path}} contains no CVR files (json, xml, csv, xls, xlsx).",
-        if (length(inner_zips) > 0) c("i" = "It holds {length(inner_zips)} nested zip{?s}: {.file {utils::head(inner_zips, 5)}}. Point at one of them instead.")),
+        if (length(inner_zips) > 0) c("i" = "It holds {length(inner_zips)} nested zip{?s}: {.file {utils::head(inner_zips, 5)}}. Point at one of them as {.code {paste0(basename(path), '::', inner_zips[1])}}.")),
       class = "rcvr_no_files"
     )
   }

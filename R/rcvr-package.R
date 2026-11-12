@@ -9,5 +9,10 @@ utils::globalVariables(c(
   "code", "contest", "contestId", "cvrNumber", "cvr_id", "district",
   "district_id", "id", "isCurrent", "is_vote", "magnitude", "magnitude2",
   "office", "p", "partyId", "party_detailed", "precinct",
-  "precinctPortionId", "raw_candidate", "raw_party", "recordId", "tabulatorId"
+  "precinctPortionId", "raw_candidate", "raw_party", "recordId", "tabulatorId",
+  "ord", ":="
 ))
+
+# data.table is used (not imported) by the delim readers; this tells
+# `[.data.table` to use data.table semantics inside the package
+.datatable.aware <- TRUE

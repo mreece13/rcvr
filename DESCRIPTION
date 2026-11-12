@@ -19,7 +19,9 @@ Suggests:
     readxl,
     arrow,
     withr,
-    dominionCVR
+    dominionCVR,
+    DBI,
+    duckdb
 Config/testthat/edition: 3
 Imports:
     checkmate,

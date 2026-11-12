@@ -15,11 +15,13 @@ clean_cvr(
   write_path = NULL,
   election = NA_character_,
   state = NA_character_,
-  county = NA_character_
+  county = NA_character_,
+  pairs = NULL
 )
 }
 \arguments{
-\item{path}{Path to the CVR file or directory}
+\item{path}{Path to the CVR file, directory, or \code{.zip}. A nested zip is
+named as \code{"outer.zip::inner.zip"}. Ignored when \code{pairs} is given.}
 
 \item{type}{(optional) The declared CVR type from the registry: one of \code{"delim"}, \code{"json"}, \code{"xml"}, \code{"special"}. When \code{NULL} (default) the type is sniffed from the files on disk, which aborts on directories holding more than one file type.}
 
@@ -40,6 +42,9 @@ clean_cvr(
 \item{state}{The state name, upper case. Required when generating metadata.}
 
 \item{county}{The county name, upper case. Required when generating metadata.}
+
+\item{pairs}{(optional) A pairs frame from \code{\link[=read_cvr]{read_cvr()}}, to skip reading
+the CVR again.}
 }
 \value{
 Either a \code{tibble} with the cleaned CVR (\code{return_metadata=FALSE}) or a list containing both the cleaned CVR and the generated metadata (\code{generate_metadata=TRUE} and \code{return_metadata=FALSE}) or just the generated metadata (\code{metadata_only=TRUE}) or a path to the output file (\code{write_path} is non-NULL).

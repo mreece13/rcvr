@@ -38,13 +38,23 @@ rcvr_DUP_SENTINEL <- "__RCVRDUP__"
 # `...15`. One pattern serves every delim reader.
 rcvr_PLACEHOLDER_RE <- "^(V\\d+|\\.\\.\\.\\d+)$"
 
-#' Resolve runs of unnamed columns into the contest they continue
+#' Resolve runs of unnamed or repeated columns into one contest each
 #'
 #' In a delimited CVR export, a named contest column followed by a run of
 #' unnamed columns is one contest spread over several columns. For a plain
 #' export (one column per contest) that means a multi-seat race: each column
 #' holds one of the voter's N selections, so the contest's magnitude is the
-#' length of the run plus one.
+#' length of the run plus one. Some exports instead repeat the contest name
+#' over every seat column (Outagamie WI, Hudson NJ, Lee FL); an adjacent run
+#' of identical names is treated the same way.
+#'
+#' The same name can also recur *non-adjacently* (Hunterdon NJ regional
+#' boards, one column per constituent town; Dane WI alder districts, one per
+#' city; Outagamie's one-seat and three-seat Combined Locks trustee races).
+#' Those are sometimes one contest and sometimes different contests, and the
+#' header cannot tell which, so each later occurrence becomes its own contest,
+#' `"<name> [2]"`, `"<name> [3]"`, ... in column order. The metadata store can
+#' map them to the same office and district where they are one contest.
 #'
 #' A run with no named predecessor -- it starts at column 1, or the column
 #' before it is a key/metadata column rather than a contest -- is left alone
@@ -62,16 +72,20 @@ rcvr_PLACEHOLDER_RE <- "^(V\\d+|\\.\\.\\.\\d+)$"
 #'   name (`TRUE`, the default), keeping every name unique so the columns
 #'   survive to `pairs_from_delim()`, which strips the sentinel again. `FALSE`
 #'   assigns the bare parent name, for callers that build the final name from
-#'   further header rows and de-duplicate themselves.
+#'   further header rows and de-duplicate themselves. Repeated names are left
+#'   as they are in that case.
+#' @param warn Warn about unresolvable placeholder runs? `header_processor()`
+#'   turns this off: its leading metadata columns are unnamed in the contest
+#'   row by design and get their names from a later header row.
 #'
 #' @return A list with `names` (the corrected vector) and `magnitude`, a named
 #'   integer vector of `contest -> magnitude` for the contests that were
 #'   extended. `magnitude` is always empty when `sentinel = FALSE`.
-resolve_placeholder_cols <- function(nms, sentinel = TRUE) {
+resolve_placeholder_cols <- function(nms, sentinel = TRUE, warn = TRUE) {
   out <- list(names = nms, magnitude = integer(0))
 
   ind <- which(stringr::str_detect(nms, rcvr_PLACEHOLDER_RE))
-  if (length(ind) == 0) {
+  if (length(ind) == 0 && !anyDuplicated(nms)) {
     return(out)
   }
 
@@ -81,26 +95,57 @@ resolve_placeholder_cols <- function(nms, sentinel = TRUE) {
     rcvr_DROP_COLS, unname(rcvr_RENAME_COLS), unique(names(rcvr_RENAME_COLS))
   )
 
+  # `base` is the name each column continues: its own, or for a resolvable
+  # placeholder its parent's
+  base <- nms
   unresolved <- integer(0)
 
-  for (r in find_consecutive_ranges(ind)) {
+  for (r in if (length(ind) > 0) find_consecutive_ranges(ind) else list()) {
     parent_i <- r[1] - 1
     if (parent_i < 1 || parent_i %in% ind || nms[parent_i] %in% not_a_contest) {
       unresolved <- c(unresolved, r)
       next
     }
-
-    parent <- nms[parent_i]
-    out$names[r] <- if (sentinel) {
-      paste0(parent, rcvr_DUP_SENTINEL, seq_along(r))
-    } else {
-      parent
-    }
-    # the run length is an exact column count, not an inference
-    if (sentinel) out$magnitude[parent] <- length(r) + 1L
+    base[r] <- nms[parent_i]
   }
 
-  if (length(unresolved) > 0) {
+  if (!sentinel) {
+    out$names <- base
+  } else {
+    runs <- rle(base)
+    ends <- cumsum(runs$lengths)
+    starts <- ends - runs$lengths + 1L
+    for (k in seq_along(runs$values)) {
+      v <- runs$values[k]
+      pos <- starts[k]:ends[k]
+      if (pos[1] %in% unresolved) next
+      occ <- sum(runs$values[seq_len(k)] == v)
+
+      if (v %in% not_a_contest) {
+        # a repeated key column: keep the first, make later copies unique so
+        # the frame stays valid; pairs_from_delim() drops them all by name
+        if (occ > 1) {
+          out$names[pos] <- paste0(v, rcvr_DUP_SENTINEL, seq_along(pos) + 100L * occ)
+        } else if (length(pos) > 1) {
+          out$names[pos[-1]] <- paste0(v, rcvr_DUP_SENTINEL, seq_along(pos[-1]))
+        }
+        next
+      }
+
+      contest <- if (occ == 1L) v else occurrence_name(v, occ)
+      out$names[pos[1]] <- contest
+      if (length(pos) > 1) {
+        out$names[pos[-1]] <- paste0(contest, rcvr_DUP_SENTINEL, seq_along(pos[-1]))
+        # the run length is an exact column count, not an inference. A
+        # `contest||candidate` name repeated is not a seat count.
+        if (!grepl("||", v, fixed = TRUE)) {
+          out$magnitude[contest] <- length(pos)
+        }
+      }
+    }
+  }
+
+  if (length(unresolved) > 0 && warn) {
     bad <- nms[unresolved]
     cli::cli_warn(
       c(
@@ -115,8 +160,15 @@ resolve_placeholder_cols <- function(nms, sentinel = TRUE) {
   out
 }
 
+# the name of the `occ`-th non-adjacent occurrence of a repeated column name.
+# The marker goes on the contest part, before any `||candidate||party`.
+occurrence_name <- function(v, occ) {
+  tag <- paste0(" [", occ, "]")
+  if (grepl("||", v, fixed = TRUE)) sub("||", paste0(tag, "||"), v, fixed = TRUE) else paste0(v, tag)
+}
+
 # various permutations of a label that the cell is redacted
-rcvr_REDACT_NAMES = c("X", "redacted for voter privacy", "REDACTED", "Redacted", "*", "redacted", "Redacted per 24-27-205.5 (4)(b)(III) C.R.S.")
+rcvr_REDACT_NAMES = c("X", "redacted for voter privacy", "REDACTED", "Redacted", "[REDACTED]", "*", "redacted", "Redacted per 24-27-205.5 (4)(b)(III) C.R.S.")
 
 # various permutations of the precinct column name
 rcvr_RENAME_COLS <- c(
@@ -157,10 +209,14 @@ is_header <- function(path) {
     d <- readxl::read_excel(path, range = "A1", col_names = FALSE, .name_repair = "unique_quiet") |> dplyr::pull()
   }
 
-  # if we detect the top left column to include something like this, it's almost certainly
-  # a header file. There may be a more systematic way to check for headers but this
-  # works without fail on every file in the data
-  stringr::str_detect(d, stringr::regex("202|General|November", ignore_case = TRUE))
+  is_header_cell(d)
+}
+
+# if we detect the top left cell to include something like this, it's almost certainly
+# a header file. There may be a more systematic way to check for headers but this
+# works without fail on every file in the data
+is_header_cell <- function(d) {
+  isTRUE(stringr::str_detect(d, stringr::regex("202|General|November", ignore_case = TRUE)))
 }
 
 #' Process delimited files with unconventional headers. They are
@@ -179,12 +235,17 @@ is_header <- function(path) {
 #' quickly, without reading the entire file.
 #'
 #' @return A tibble formatted with conventional headers
-header_processor <- function(path, n = Inf) {
+header_processor <- function(path, n = Inf, grid = NULL) {
 
   checkmate::assertCharacter(path)
   checkmate::assert_number(n, lower=1)
 
-  if (stringr::str_detect(path, "csv$|CSV$")) {
+  if (!is.null(grid)) {
+    # an .xlsx already read by read_xlsx_grid(): the title row is grid row 1
+    # and the contest row is grid row 2, as `skip = 1, header = TRUE` reads it
+    df <- grid_with_header(grid, 2L)
+    if (is.finite(n)) df <- df[seq_len(min(n, nrow(df)))]
+  } else if (stringr::str_detect(path, "csv$|CSV$")) {
     rlang::check_installed("data.table", reason = "to read CSV files")
     df <- data.table::fread(
       path,
@@ -221,7 +282,7 @@ header_processor <- function(path, n = Inf) {
   # and a sentinel inserted here would sit mid-string where
   # `pairs_from_delim()` cannot strip it. No magnitude is inferred: a run here
   # is extra candidates, not extra seats.
-  colnames(df) <- resolve_placeholder_cols(colnames(df), sentinel = FALSE)$names
+  colnames(df) <- resolve_placeholder_cols(colnames(df), sentinel = FALSE, warn = FALSE)$names
 
   ncols = ncol(df)
 
@@ -291,6 +352,17 @@ assert_pairs <- function(pairs, call = rlang::caller_env()) {
   if (nrow(pairs) == 0) {
     cli::cli_abort(
       "Pairs frame has zero rows.",
+      class = "rcvr_bad_pairs",
+      call = call
+    )
+  }
+
+  # a reader that cannot find the contests in a layout it half-recognises
+  # (Hart's nested XML before it was supported) yields one NA-contest row per
+  # ballot; that passes every type check but carries no votes
+  if ("contest" %in% colnames(pairs) && all(is.na(pairs$contest))) {
+    cli::cli_abort(
+      "Every row of the pairs frame has an NA {.field contest}; the reader found no contests.",
       class = "rcvr_bad_pairs",
       call = call
     )

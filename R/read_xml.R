@@ -1,89 +1,93 @@
-# pull a single scalar out of a pluck() result, treating NULL/empty as NA
-pluck_chr <- function(x, ...) {
-  v <- purrr::pluck(x, ...)
-  if (is.null(v)) NA_character_ else as.character(v)
+# text of the first node matching `xpath` under `node`, NA when absent
+xml_chr <- function(node, xpath) {
+  hit <- xml2::xml_find_first(node, xpath)
+  if (inherits(hit, "xml_missing")) NA_character_ else xml2::xml_text(hit)
 }
 
-# a contest may list one Options sibling per candidate (vote-for-N contests,
-# or a format that lists every option rather than only the marked one), so
-# every "Options" name under a contest must be read, not just the first
+# resolve one option node to the candidate it marks, or NULL if unmarked.
+# A marked option with write-in markup is "WRITEIN" whether or not the
+# write-in text was transcribed (Hart exports an empty <Text/> for an
+# unresolved write-in); a marked option with neither a Name nor write-in
+# markup is NA, which read_xml_cvr() aborts on.
 xml_option <- function(opt) {
-  value <- pluck_chr(opt, "Value", 1)
-  marked <- !is.na(value) && identical(value, "1")
-  if (!marked) return(NULL)
-
-  writein_text <- purrr::pluck(opt, "WriteInData", "Text", 1)
-  if (!is.null(writein_text)) return("WRITEIN")
-  pluck_chr(opt, "Name", 1)
+  if (!identical(xml_chr(opt, "./Value"), "1")) return(NULL)
+  if (!inherits(xml2::xml_find_first(opt, "./WriteInData"), "xml_missing")) {
+    return("WRITEIN")
+  }
+  xml_chr(opt, "./Name")
 }
 
 # parse one ballot XML file into long rows
 #
-# The vendor format has multiple sibling <Contests> elements directly under
-# the root (and, within a contest, multiple sibling <Options> elements), so
-# xml2::as_list() yields lists with duplicate names. tidyr::unnest_wider()
-# requires unique names and errors on that shape (verified against the
-# fixtures), so the ported cvrs implementation (which used
-# unnest_wider()/hoist() throughout, and which also read only the first
-# <Options> sibling regardless of which one was marked) does not run
-# correctly as written. This walks the parsed list directly instead, which
-# tolerates the duplicate-name siblings tidyr's wide-unnest cannot, and
-# reads every <Options> sibling of a contest rather than only the first.
+# Two layouts occur. The older one has one sibling <Contests> element per
+# contest directly under the root, each holding its <Name> and one sibling
+# <Options> element per option:
+#
+#   <Cvr><Contests><Name/><Options><Name/><Value/></Options>...</Contests>...
+#
+# Hart's CVRDesign.xsd export (Tarrant TX, Nevada County CA, San Joaquin CA,
+# Hawaii) wraps them one level deeper:
+#
+#   <Cvr><Contests><Contest><Name/><Options><Option><Name/><Value/></Option>
+#     </Options><Undervotes/><Overvoted/></Contest>...</Contests>...
+#
+# Both are read with the same XPath union. The default namespace is
+# stripped first so the paths need no prefix.
 xml_ballot <- function(path, i) {
   x <- xml2::read_xml(path)
-  root <- xml2::as_list(x)[[1]]
+  xml2::xml_ns_strip(x)
 
   # PrecinctSplit is optional; a ballot without one gets an NA precinct,
   # matching the pairs contract, rather than crashing the whole directory
-  precinct_split <- purrr::pluck(root, "PrecinctSplit")
-  precinct <- if (is.null(precinct_split)) {
-    NA_character_
-  } else {
-    pluck_chr(precinct_split, "Name", 1)
+  precinct <- xml_chr(x, "/*/PrecinctSplit/Name")
+
+  contests <- xml2::xml_find_all(x, "/*/Contests/Contest | /*/Contests[Name]")
+
+  rows <- lapply(contests, function(con) {
+    contest <- xml_chr(con, "./Name")
+
+    options <- xml2::xml_find_all(con, "./Options/Option | ./Options[not(Option)][Value]")
+    resolved <- lapply(options, xml_option)
+    # NULL is an unmarked option (it cast no vote, drop it); NA is a *marked*
+    # option we cannot identify, kept so read_xml_cvr() can abort on it and
+    # it is never confused with "no marks", which collapses to "undervote"
+    resolved <- resolved[!vapply(resolved, is.null, logical(1))]
+    marked <- as.character(unlist(resolved))
+
+    if (!inherits(xml2::xml_find_first(con, "./Overvoted"), "xml_missing")) {
+      # an overvoted contest counts for no candidate, as in read_json_cvr()
+      marked <- "overvote"
+    } else if (length(marked) == 0) {
+      # no marked option (Undervotes, or every option unmarked)
+      marked <- "undervote"
+    }
+
+    list(contest = rep(contest, length(marked)), raw_candidate = marked)
+  })
+
+  contest <- unlist(lapply(rows, `[[`, "contest"), use.names = FALSE)
+  raw_candidate <- unlist(lapply(rows, `[[`, "raw_candidate"), use.names = FALSE)
+  if (is.null(contest)) {
+    contest <- character(0)
+    raw_candidate <- character(0)
   }
 
-  contests <- root[names(root) == "Contests"]
-
-  rows <- purrr::map(contests, function(con) {
-    contest <- pluck_chr(con, "Name", 1)
-
-    options <- con[names(con) == "Options"]
-    resolved <- purrr::map(options, xml_option)
-    # xml_option() returns NULL for an unmarked Options sibling (drop it --
-    # it cast no vote) and NA_character_ for a *marked* one with neither a
-    # Name nor write-in text (a vote was cast, we just can't identify it --
-    # keep it as NA so it is never confused with "no marks were cast at
-    # all", which is what collapses to "undervote" below)
-    is_unmarked <- vapply(resolved, is.null, logical(1))
-    marked <- vapply(
-      resolved[!is_unmarked], function(x) if (is.null(x)) NA_character_ else x,
-      character(1)
-    ) |> unname()
-
-    # no marked option (Undervotes == "1", or every Options sibling
-    # unmarked) becomes a single undervote row
-    if (length(marked) == 0) marked <- "undervote"
-
-    tibble::tibble(contest = contest, raw_candidate = marked)
-  }) |>
-    purrr::list_rbind()
-
-  rows |>
-    dplyr::mutate(
-      cvr_id = as.integer(i),
-      precinct = precinct,
-      contest = stringr::str_replace_all(contest, stringr::fixed("\n"), " "),
-      raw_candidate = stringr::str_replace_all(raw_candidate, stringr::fixed("\n"), " "),
-      raw_party = NA_character_,
-      rank = NA_integer_
-    ) |>
-    dplyr::select(cvr_id, precinct, contest, raw_candidate, raw_party, rank)
+  tibble::tibble(
+    cvr_id = rep(as.integer(i), length(contest)),
+    precinct = rep(precinct, length(contest)),
+    contest = stringr::str_replace_all(contest, stringr::fixed("\n"), " "),
+    raw_candidate = stringr::str_replace_all(raw_candidate, stringr::fixed("\n"), " "),
+    raw_party = NA_character_,
+    rank = NA_integer_
+  )
 }
 
 #' Read a directory of per-ballot XML CVRs
 #'
-#' One file per ballot; the ballot's identity is its position in the sorted
-#' file listing.
+#' One file per ballot sheet; the ballot's identity is its position in the
+#' sorted file listing. Hart exports write one file per *sheet* and carry no
+#' key linking the sheets of one voter's ballot, so for multi-sheet ballots
+#' `cvr_id` identifies a sheet.
 #'
 #' @param path Path to the directory of `.xml` files.
 #'
@@ -110,12 +114,9 @@ read_xml_cvr <- function(path) {
   raw <- purrr::imap(files, xml_ballot) |>
     purrr::list_rbind()
 
-  # a marked Options sibling (Value = 1) with neither a Name nor
-  # WriteInData/Text is not the same thing as an undervote -- a vote was
-  # cast, we just can't identify it -- so it must abort rather than
-  # disappear through the same filter that legitimately drops "no marked
-  # option" rows (those are synthesised as "undervote" upstream in
-  # xml_ballot(), never NA)
+  # a marked option with neither a Name nor write-in markup is not the same
+  # thing as an undervote -- a vote was cast, we just can't identify it -- so
+  # it must abort rather than disappear
   unnamed <- dplyr::filter(raw, is.na(raw_candidate))
   if (nrow(unnamed) > 0) {
     cli::cli_abort(

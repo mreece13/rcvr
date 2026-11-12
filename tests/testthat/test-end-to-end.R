@@ -104,7 +104,7 @@ test_that("clean_cvr writes a parquet file when write_path is given", {
 
 test_that("the exported surface is exactly the public API", {
   expected <- c(
-    "clean_cvr", "classify_cvr", "resolve_reader", "gen_metadata",
+    "clean_cvr", "read_cvr", "classify_cvr", "resolve_reader", "gen_metadata",
     "read_delim_cvr", "read_delim_multi_cvr", "read_json_cvr",
     "read_xml_cvr", "read_special_cvr", "has_special_reader"
   )

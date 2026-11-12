@@ -13,7 +13,7 @@ row for the header. There is also an edge case in some counties (e.g., San Diego
 wherein the header is inexplicably repeated partway through the file. The chunk that
 generates \code{bad_rows} removes this extra information.}
 \usage{
-header_processor(path, n = Inf)
+header_processor(path, n = Inf, grid = NULL)
 }
 \arguments{
 \item{path}{The path to the file}

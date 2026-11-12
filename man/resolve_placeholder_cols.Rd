@@ -2,9 +2,9 @@
 % Please edit documentation in R/utils.R
 \name{resolve_placeholder_cols}
 \alias{resolve_placeholder_cols}
-\title{Resolve runs of unnamed columns into the contest they continue}
+\title{Resolve runs of unnamed or repeated columns into one contest each}
 \usage{
-resolve_placeholder_cols(nms, sentinel = TRUE)
+resolve_placeholder_cols(nms, sentinel = TRUE, warn = TRUE)
 }
 \arguments{
 \item{nms}{Character vector of column names, in column order.}
@@ -13,7 +13,12 @@ resolve_placeholder_cols(nms, sentinel = TRUE)
 name (\code{TRUE}, the default), keeping every name unique so the columns
 survive to \code{pairs_from_delim()}, which strips the sentinel again. \code{FALSE}
 assigns the bare parent name, for callers that build the final name from
-further header rows and de-duplicate themselves.}
+further header rows and de-duplicate themselves. Repeated names are left
+as they are in that case.}
+
+\item{warn}{Warn about unresolvable placeholder runs? \code{header_processor()}
+turns this off: its leading metadata columns are unnamed in the contest
+row by design and get their names from a later header row.}
 }
 \value{
 A list with \code{names} (the corrected vector) and \code{magnitude}, a named
@@ -25,9 +30,19 @@ In a delimited CVR export, a named contest column followed by a run of
 unnamed columns is one contest spread over several columns. For a plain
 export (one column per contest) that means a multi-seat race: each column
 holds one of the voter's N selections, so the contest's magnitude is the
-length of the run plus one.
+length of the run plus one. Some exports instead repeat the contest name
+over every seat column (Outagamie WI, Hudson NJ, Lee FL); an adjacent run
+of identical names is treated the same way.
 }
 \details{
+The same name can also recur \emph{non-adjacently} (Hunterdon NJ regional
+boards, one column per constituent town; Dane WI alder districts, one per
+city; Outagamie's one-seat and three-seat Combined Locks trustee races).
+Those are sometimes one contest and sometimes different contests, and the
+header cannot tell which, so each later occurrence becomes its own contest,
+\code{"<name> [2]"}, \code{"<name> [3]"}, ... in column order. The metadata store can
+map them to the same office and district where they are one contest.
+
 A run with no named predecessor -- it starts at column 1, or the column
 before it is a key/metadata column rather than a contest -- is left alone
 and warned about. There is no name to inherit, so guessing one would invent

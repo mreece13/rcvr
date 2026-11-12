@@ -14,6 +14,8 @@ A pairs frame. \code{raw_party} and \code{rank} are always \code{NA} — this
 vendor's format carries neither.
 }
 \description{
-One file per ballot; the ballot's identity is its position in the sorted
-file listing.
+One file per ballot sheet; the ballot's identity is its position in the
+sorted file listing. Hart exports write one file per \emph{sheet} and carry no
+key linking the sheets of one voter's ballot, so for multi-sheet ballots
+\code{cvr_id} identifies a sheet.
 }

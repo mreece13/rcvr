@@ -228,7 +228,9 @@ gen_metadata <- function(pairs, type, path, election, state, county, verbose = F
         is.na(party_detailed), NA, party_detailed == "NONPARTISAN"
       ),
       magnitude = stringr::str_extract(
-        contest, stringr::regex("Vote For.*?(\\d+)", TRUE), group = 1
+        contest,
+        stringr::regex("(?:Vote For|Number of positions).*?(\\d+)", TRUE),
+        group = 1
       ) |> as.integer(),
       drop = FALSE
     ) |>
@@ -252,7 +254,8 @@ gen_metadata <- function(pairs, type, path, election, state, county, verbose = F
     }
   } else if (type == "JSON") {
     # district and magnitude come from the Dominion manifests, not from regex
-    ctx <- json_seed_context(path)
+    ctx <- attr(pairs, "rcvr_json_context")
+    if (is.null(ctx)) ctx <- json_seed_context(path)
     meta <- meta |>
       dplyr::select(-district, -magnitude) |>
       dplyr::left_join(ctx, dplyr::join_by(contest))
