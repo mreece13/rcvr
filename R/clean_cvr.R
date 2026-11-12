@@ -139,6 +139,17 @@ clean_cvr <- function(
   }
 
   path <- fs::path_real(path)
+
+  # a zipped export is extracted (CVR members only) to a temp dir for the
+  # duration of this call, so expanded exports never have to live on disk
+  # next to the raw data
+  if (fs::is_file(path) && identical(stringr::str_to_lower(fs::path_ext(path)), "zip")) {
+    exdir <- tempfile("rcvr_zip_")
+    on.exit(unlink(exdir, recursive = TRUE), add = TRUE)
+    if (verbose) cli::cli_alert_info("Extracting {.file {path}}")
+    path <- fs::path_real(unzip_cvr(path, exdir = exdir))
+  }
+
   resolved <- resolve_reader(path, type = type, verbose = FALSE)
   path <- resolved$path
   type <- resolved$type

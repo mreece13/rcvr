@@ -1,52 +1,114 @@
-#' Merge ballots that a vendor fragmented across multiple rows
+#' Merge ballots that a vendor split across several rows (multi-card ballots)
+#'
+#' Some exports write one row per ballot *card*: a two-card ballot is two
+#' consecutive rows with the same ballot style, the first holding the card-1
+#' contests and the second the card-2 contests. A contest that is on a card
+#' but not voted is written as `"0"`; a contest that is not on that card is
+#' blank. So within one ballot style, card rows have complementary coverage.
+#'
+#' Detection is per ballot style (with any `" [n]"` card suffix stripped):
+#' take the style's most-filled contest column as the anchor; columns filled
+#' (almost) only on anchor rows are card-1 columns, columns filled (almost)
+#' only on non-anchor rows are continuation columns. A row with nothing in
+#' the card-1 columns and something in the continuation columns is a
+#' continuation and is merged into the row just above it, provided that row
+#' has the same style. Ballot styles whose contests simply differ (one
+#' party's primary, a city's local races) never split *within* a style, so
+#' they are left alone.
 #'
 #' @param raw A wide CVR tibble.
 #' @param path The source path, used only in the warning message.
 #'
-#' @return `raw`, with fragmented rows merged where detected.
+#' @return `raw`, with continuation rows merged into their ballot.
 fix_fragmentation <- function(raw, path = NA) {
-  if (!("ballot_style" %in% colnames(raw))) {
+  if (!("ballot_style" %in% colnames(raw)) || nrow(raw) < 2) {
     return(raw)
   }
 
-  foundbrackets <- dplyr::distinct(raw, ballot_style) |>
-    dplyr::pull() |>
-    stringr::str_detect("\\[\\d+\\]$") |>
-    sum() > 0
+  key <- c(rcvr_DROP_COLS, unname(rcvr_RENAME_COLS), names(rcvr_RENAME_COLS),
+           "cvr_id", "ballot_style2")
+  contest_cols <- setdiff(colnames(raw), key)
+  if (length(contest_cols) < 2) return(raw)
 
-  firstcol <- setdiff(
-    colnames(raw),
-    c(rcvr_DROP_COLS, "cvr_id", "precinct", "ballot_style")
-  )[1]
+  filled <- vapply(raw[contest_cols], function(x) !is.na(x) & x != "",
+                   logical(nrow(raw)))
+  if (is.null(dim(filled))) filled <- matrix(filled, nrow = 1)
+  style <- stringr::str_remove(as.character(raw$ballot_style), " \\[\\d+\\]$")
+  style[is.na(style)] <- ""
 
-  foundspaces <- raw[[firstcol]] |>
-    table() |>
-    as.data.frame() |>
-    dplyr::mutate(p = Freq / sum(Freq)) |>
-    dplyr::filter(Var1 == "") |>
-    dplyr::pull(p) > 0.1
-
-  if (!(isTRUE(foundbrackets) | isTRUE(foundspaces))) {
-    return(raw)
+  cont <- logical(nrow(raw))
+  for (s in unique(style)) {
+    rows <- which(style == s)
+    if (length(rows) < 2) next
+    f <- filled[rows, , drop = FALSE]
+    # card-1 contests come first in column order, so the first contest used
+    # by this style is on card 1 (the most-filled column is not: card-1 and
+    # card-2 columns are each filled on about half the rows)
+    anchor <- which(colSums(f) > 0)[1]
+    if (is.na(anchor)) next
+    a <- f[, anchor]
+    if (all(a) || !any(a)) next
+    rate_a <- colMeans(f[a, , drop = FALSE])
+    rate_b <- colMeans(f[!a, , drop = FALSE])
+    card1 <- rate_a > 0 & rate_b < 0.01
+    card2 <- rate_b > 0 & rate_a < 0.01
+    if (!any(card2)) next
+    # the non-anchor rows must be (almost) entirely continuation cards; a
+    # style where they mostly carry card-1 contests is not multi-card
+    fills_b <- sum(f[!a, , drop = FALSE])
+    if (fills_b == 0 || sum(f[!a, card2, drop = FALSE]) / fills_b < 0.9) next
+    is_cont <- rowSums(f[, card1, drop = FALSE]) == 0 & rowSums(f[, card2, drop = FALSE]) > 0
+    cont[rows[is_cont]] <- TRUE
   }
+
+  if (!any(cont)) return(raw)
+
+  # A continuation card can only be linked to its voter when the export keeps
+  # each voter's cards together: card 2 directly after card 1, same style.
+  # Election-day tabulators often take cards in arbitrary order (Clark OH
+  # 2024), and then no linkage exists in the data at all -- merging there
+  # would attach cards to the wrong voters. So link batch by batch, and only
+  # in batches where (almost) every continuation follows a main row of the
+  # same style.
+  prev_ok <- c(FALSE, style[-1] == style[-length(style)] & !cont[-length(cont)])
+  batch_cols <- intersect(c("TabulatorNum", "Tabulator Num", "TabulatorId",
+                            "BatchId", "Batch Id", "Batch"), colnames(raw))
+  batch <- if (length(batch_cols) > 0) {
+    do.call(paste, c(lapply(raw[batch_cols], as.character), sep = "\r"))
+  } else {
+    rep("", nrow(raw))
+  }
+  share_ok <- tapply(prev_ok[cont], batch[cont], mean)
+  linked_batch <- names(share_ok)[share_ok >= 0.98]
+  unlinked <- cont & !(batch %in% linked_batch)
+  cont <- cont & prev_ok & batch %in% linked_batch
+
+  if (any(unlinked)) {
+    cli::cli_warn(
+      c("{.file {as.character(path)}}: {sum(unlinked)} continuation card row{?s} cannot be linked to a voter (cards out of order within their batch); each is kept as its own ballot row.",
+        "i" = "For these, {.field cvr_id} identifies a card, not a voter."),
+      class = "rcvr_unlinked_cards"
+    )
+  }
+  if (!any(cont)) return(raw)
 
   cli::cli_warn(
-    "{.file {path}} appears to contain fragmented ballots (where the ballot is split across multiple rows). We attempt to repair this by merging rows together using an intelligent strategy, but any further analysis should be taken with caution."
+    "{.file {as.character(path)}}: merged {sum(cont)} continuation card row{?s} into the ballot row above (multi-card ballots)."
   )
 
-  tokeep <- raw[[firstcol]] != ""
-
-  base <- raw |>
-    dplyr::mutate(
-      dplyr::across(tidyselect::everything(), ~ dplyr::na_if(.x, "")),
-      ballot_style2 = stringr::str_remove(ballot_style, " \\[\\d+\\]$"),
-      .before = ballot_style
-    ) |>
-    dplyr::group_by(ballot_style2) |>
-    tidyr::fill(tidyselect::everything(), .direction = "downup") |>
-    dplyr::ungroup()
-
-  base[tokeep, ]
+  grp <- cumsum(!cont)
+  main_row <- which(!cont)[grp]
+  for (col in contest_cols) {
+    v <- raw[[col]]
+    take <- cont & filled[, col]
+    if (any(take)) {
+      tgt <- main_row[take]
+      blank_tgt <- is.na(v[tgt]) | v[tgt] == ""
+      v[tgt[blank_tgt]] <- v[take][blank_tgt]
+      raw[[col]] <- v
+    }
+  }
+  raw[!cont, , drop = FALSE]
 }
 
 #' Read a single delimited CVR file

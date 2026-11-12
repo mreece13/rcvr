@@ -21,8 +21,11 @@ rcvr_DROP_COLS <- c(
   "ScanComputerName", "Scan Computer Name",
   "Status", 
   "Remade",
-  "Voting Session Identifier", 
-  "Is Current"
+  "Voting Session Identifier",
+  "Is Current",
+  # Dominion CSV exports with the 4-row header spell these without spaces
+  "ImagePath", "SessionType", "VoterFlag", "CardInfo", "PdfName",
+  "UniqueVotingIdentifier", "VotingSessionIdentifier", "IsCurrent"
 )
 
 # appended by `header_processor()` to make duplicate column names unique.
