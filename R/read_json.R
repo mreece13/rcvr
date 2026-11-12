@@ -131,11 +131,14 @@ read_json_cvr <- function(path) {
   # legitimate "no mark"/"no party" sentinel (handled below), so only an id
   # that is neither -1L nor resolved is an error: a version mismatch, a
   # truncated manifest, or a corrupt export. Check each id/manifest pair
-  # separately so the abort names the manifest at fault.
+  # separately so the abort names the manifest at fault. Some exports
+  # (Alaska 2026) also write PartyId 0 for a mark with no affiliation
+  # (ballot measures, judges); 0 is never a manifest id, so it is treated
+  # like -1L.
   unresolved <- list(
     CandidateManifest = dplyr::filter(joined, candidateId != -1L, is.na(raw_candidate)),
     ContestManifest = dplyr::filter(joined, contestId != -1L, is.na(contest)),
-    PartyManifest = dplyr::filter(joined, partyId != -1L, is.na(raw_party)),
+    PartyManifest = dplyr::filter(joined, !partyId %in% c(-1L, 0L), is.na(raw_party)),
     PrecinctPortionManifest = dplyr::filter(joined, precinctPortionId != -1L, is.na(precinct))
   )
   bad_manifest <- names(unresolved)[vapply(unresolved, nrow, integer(1)) > 0]
@@ -161,16 +164,41 @@ read_json_cvr <- function(path) {
     )
   }
 
-  pairs <- joined |>
+  # Dominion flags each mark with IsVote. A mark the tabulator did not count
+  # is either ambiguous (a faint or stray mark, IsAmbiguous = TRUE) or part
+  # of an overvote (IsAmbiguous = FALSE). Ambiguous marks are not voter
+  # choices and are dropped: in a ranked contest, keeping them invents a
+  # second candidate at a rank the voter filled once. Overvoted marks
+  # collapse to one "overvote" row per rank. A contest left with no marks
+  # after the drop becomes an undervote.
+  marks <- joined |>
     dplyr::mutate(
       # extract_marks() emits -1 for a contest with no marks, which is an
       # undervote, and -1 rank/party alongside it
-      raw_candidate = dplyr::if_else(candidateId == -1L, "undervote", raw_candidate),
-      raw_party = dplyr::if_else(partyId == -1L, NA_character_, raw_party),
+      no_marks = candidateId == -1L,
+      overvoted = !no_marks & !isVote & !isAmbiguous,
+      raw_candidate = dplyr::case_when(
+        no_marks ~ "undervote",
+        overvoted ~ "overvote",
+        .default = raw_candidate
+      ),
+      raw_party = dplyr::if_else(partyId %in% c(-1L, 0L) | overvoted, NA_character_, raw_party),
       rank = dplyr::if_else(rank == -1L, NA_integer_, as.integer(rank)),
       cvr_id = as.integer(cvr_id),
       precinct = as.character(precinct)
-    ) |>
+    )
+
+  counted <- dplyr::filter(marks, no_marks | isVote | !isAmbiguous)
+
+  emptied <- dplyr::distinct(marks, cvr_id, precinct, contest) |>
+    dplyr::anti_join(counted, dplyr::join_by(cvr_id, contest)) |>
+    dplyr::mutate(
+      raw_candidate = "undervote",
+      raw_party = NA_character_,
+      rank = NA_integer_
+    )
+
+  pairs <- dplyr::bind_rows(counted, emptied) |>
     dplyr::select(cvr_id, precinct, contest, raw_candidate, raw_party, rank) |>
     dplyr::distinct()
 

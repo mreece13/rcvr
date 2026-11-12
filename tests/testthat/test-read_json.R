@@ -87,3 +87,33 @@ test_that("gen_metadata seeds a JSON county with the full store key", {
   biden <- dplyr::filter(meta, raw_candidate == "JOSEPH R BIDEN")
   expect_equal(biden$party_detailed, "DEMOCRAT")
 })
+
+test_that("ranked marks keep their rank and ambiguous non-votes are dropped", {
+  skip_if_no_dominion()
+  pairs <- read_json_cvr(fixture_path("json-rcv"))
+  sen <- dplyr::filter(pairs, contest == "US SENATOR", cvr_id == 1L) |>
+    dplyr::arrange(rank)
+
+  expect_equal(sen$raw_candidate, c("ANNA LEE", "BEN PARK", "CARA DIAZ"))
+  expect_equal(sen$rank, 1:3)
+})
+
+test_that("non-ambiguous non-vote marks collapse to one overvote row", {
+  skip_if_no_dominion()
+  pairs <- read_json_cvr(fixture_path("json-rcv"))
+  cc <- dplyr::filter(pairs, contest == "COUNTY COMMISSIONER")
+
+  expect_equal(cc$raw_candidate, "overvote")
+  expect_equal(cc$rank, 1L)
+  expect_true(is.na(cc$raw_party))
+})
+
+test_that("a contest whose only marks are ambiguous becomes an undervote", {
+  skip_if_no_dominion()
+  pairs <- read_json_cvr(fixture_path("json-rcv"))
+  sen2 <- dplyr::filter(pairs, contest == "US SENATOR", cvr_id == 2L)
+
+  expect_equal(sen2$raw_candidate, "undervote")
+  expect_true(is.na(sen2$rank))
+  expect_equal(sen2$precinct, "PRECINCT 001")
+})

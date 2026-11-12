@@ -1,0 +1,7 @@
+{"Version": "5.10", "List": [
+  {"Description": "ANNA LEE", "Id": 200, "ContestId": 20, "Type": "Regular"},
+  {"Description": "BEN PARK", "Id": 201, "ContestId": 20, "Type": "Regular"},
+  {"Description": "CARA DIAZ", "Id": 202, "ContestId": 20, "Type": "Regular"},
+  {"Description": "ALEX STONE", "Id": 102, "ContestId": 11, "Type": "Regular"},
+  {"Description": "RIVER KIM", "Id": 103, "ContestId": 11, "Type": "Regular"}
+]}
