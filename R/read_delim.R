@@ -1,20 +1,9 @@
 #' Merge ballots that a vendor split across several rows (multi-card ballots)
 #'
-#' Some exports write one row per ballot *card*: a two-card ballot is two
-#' consecutive rows with the same ballot style, the first holding the card-1
-#' contests and the second the card-2 contests. A contest that is on a card
-#' but not voted is written as `"0"`; a contest that is not on that card is
-#' blank. So within one ballot style, card rows have complementary coverage.
-#'
-#' Detection is per ballot style (with any `" [n]"` card suffix stripped):
-#' take the style's most-filled contest column as the anchor; columns filled
-#' (almost) only on anchor rows are card-1 columns, columns filled (almost)
-#' only on non-anchor rows are continuation columns. A row with nothing in
-#' the card-1 columns and something in the continuation columns is a
-#' continuation and is merged into the row just above it, provided that row
-#' has the same style. Ballot styles whose contests simply differ (one
-#' party's primary, a city's local races) never split *within* a style, so
-#' they are left alone.
+#' The wide-frame form of the card linking that `pairs_from_delim()` applies:
+#' see `fragment_links()` for the rule. A continuation card row is merged
+#' into the row of the voter's first card; rows that cannot be linked stay
+#' separate (warning `rcvr_unlinked_cards`).
 #'
 #' @param raw A wide CVR tibble.
 #' @param path The source path, used only in the warning message.
@@ -24,122 +13,23 @@ fix_fragmentation <- function(raw, path = NA) {
   if (!("ballot_style" %in% colnames(raw)) || nrow(raw) < 2) {
     return(raw)
   }
+  layout <- delim_layout(colnames(raw))
+  if (length(layout$value_cols) < 2) return(raw)
 
-  key <- c(rcvr_DROP_COLS, unname(rcvr_RENAME_COLS), names(rcvr_RENAME_COLS),
-           "cvr_id", "ballot_style2")
-  contest_cols <- setdiff(colnames(raw), key)
-  if (length(contest_cols) < 2) return(raw)
+  fr <- fragment_links(delim_cells(raw, layout), path)
+  if (is.null(fr) || !any(fr$linked)) return(raw)
 
-  filled <- vapply(raw[contest_cols], function(x) !is.na(x) & x != "",
-                   logical(nrow(raw)))
-  if (is.null(dim(filled))) filled <- matrix(filled, nrow = 1)
-  style <- stringr::str_remove(as.character(raw$ballot_style), " \\[\\d+\\]$")
-  style[is.na(style)] <- ""
-
-  cont <- logical(nrow(raw))
-  for (s in unique(style)) {
-    rows <- which(style == s)
-    if (length(rows) < 2) next
-    f <- filled[rows, , drop = FALSE]
-    # card-1 contests come first in column order, so the first contest used
-    # by this style is on card 1 (the most-filled column is not: card-1 and
-    # card-2 columns are each filled on about half the rows)
-    anchor <- which(colSums(f) > 0)[1]
-    if (is.na(anchor)) next
-    a <- f[, anchor]
-    if (all(a) || !any(a)) next
-    rate_a <- colMeans(f[a, , drop = FALSE])
-    rate_b <- colMeans(f[!a, , drop = FALSE])
-    card1 <- rate_a > 0 & rate_b < 0.01
-    card2 <- rate_b > 0 & rate_a < 0.01
-    if (!any(card2)) next
-    # the non-anchor rows must be (almost) entirely continuation cards; a
-    # style where they mostly carry card-1 contests is not multi-card
-    fills_b <- sum(f[!a, , drop = FALSE])
-    if (fills_b == 0 || sum(f[!a, card2, drop = FALSE]) / fills_b < 0.9) next
-    is_cont <- rowSums(f[, card1, drop = FALSE]) == 0 & rowSums(f[, card2, drop = FALSE]) > 0
-    cont[rows[is_cont]] <- TRUE
-  }
-
-  if (!any(cont)) return(raw)
-
-  # A continuation card can only be linked to its voter when the export keeps
-  # each voter's cards together: card 2 directly after card 1, same style.
-  # Election-day tabulators often take cards in arbitrary order (Clark OH
-  # 2024), and then no linkage exists in the data at all -- merging there
-  # would attach cards to the wrong voters. So link batch by batch, and only
-  # in batches where (almost) every continuation follows a main row of the
-  # same style.
-  batch_cols <- intersect(c("TabulatorNum", "Tabulator Num", "TabulatorId",
-                            "BatchId", "Batch Id", "Batch"), colnames(raw))
-  batch <- if (length(batch_cols) > 0) {
-    do.call(paste, c(lapply(raw[batch_cols], as.character), sep = "\r"))
-  } else {
-    rep("", nrow(raw))
-  }
-
-  link <- function(o) {
-    s <- style[o]
-    k <- cont[o]
-    b <- batch[o]
-    prev_ok <- c(FALSE, s[-1] == s[-length(s)] & !k[-length(k)])
-    share_ok <- tapply(prev_ok[k], b[k], mean)
-    linked_batch <- names(share_ok)[share_ok >= 0.98]
-    list(
-      o = o,
-      linked = k & prev_ok & b %in% linked_batch,
-      unlinked = k & !(b %in% linked_batch)
-    )
-  }
-  res <- link(seq_len(nrow(raw)))
-
-  # Some exports are sorted by precinct rather than scan order (Pueblo CO
-  # 2024), so a voter's cards are not adjacent rows even though they were
-  # scanned back to back. Scan order survives in the record id within each
-  # tabulator batch; when linking in file order leaves cards unlinked, try
-  # that order too and keep whichever links more. The same >= 98% per-batch
-  # rule applies, so a batch whose cards were genuinely shuffled still stays
-  # unlinked.
-  rec_col <- intersect(c("RecordId", "Record Id"), colnames(raw))
-  if (any(res$unlinked) && length(rec_col) > 0 && length(batch_cols) > 0) {
-    rec <- suppressWarnings(as.numeric(raw[[rec_col[1]]]))
-    if (!anyNA(rec)) {
-      alt <- link(order(batch, rec))
-      if (sum(alt$linked) > sum(res$linked)) res <- alt
-    }
-  }
-
-  if (!identical(res$o, seq_len(nrow(raw)))) {
-    raw <- raw[res$o, , drop = FALSE]
-    filled <- filled[res$o, , drop = FALSE]
-  }
-  unlinked <- res$unlinked
-  cont <- res$linked
-
-  # cli's {.file} errors on NA, and `path` is NA when called without one
-  src <- if (length(path) == 1 && !is.na(path)) as.character(path) else "CVR"
-
-  if (any(unlinked)) {
-    cli::cli_warn(
-      c("{.file {src}}: {sum(unlinked)} continuation card row{?s} cannot be linked to a voter (cards out of order within their batch); each is kept as its own ballot row.",
-        "i" = "For these, {.field cvr_id} identifies a card, not a voter."),
-      class = "rcvr_unlinked_cards"
-    )
-  }
-  if (!any(cont)) return(raw)
-
-  cli::cli_warn(
-    "{.file {src}}: merged {sum(cont)} continuation card row{?s} into the ballot row above (multi-card ballots)."
-  )
-
+  raw <- raw[fr$o, , drop = FALSE]
+  cont <- fr$linked
   grp <- cumsum(!cont)
   main_row <- which(!cont)[grp]
-  for (col in contest_cols) {
+  for (col in colnames(raw)[layout$value_cols]) {
     v <- raw[[col]]
-    take <- cont & filled[, col]
+    filled <- !is.na(v) & v != ""
+    take <- cont & filled
     if (any(take)) {
       tgt <- main_row[take]
-      blank_tgt <- is.na(v[tgt]) | v[tgt] == ""
+      blank_tgt <- !filled[tgt]
       v[tgt[blank_tgt]] <- v[take][blank_tgt]
       raw[[col]] <- v
     }
@@ -310,11 +200,13 @@ xlsx_col_letter <- function(i) {
 #' Read a single delimited CVR file
 #'
 #' @param path Path to a CSV, XLS, or XLSX CVR.
+#' @param n Number of file rows to read after the first header line. Used to
+#'   read the header of a large file without reading the data.
 #'
 #' @return A wide tibble, one row per ballot, with `precinct` and
 #'   `ballot_style` present (possibly all-`NA`).
 #' @export
-read_delim_cvr <- function(path) {
+read_delim_cvr <- function(path, n = Inf) {
   path <- fs::path_real(path)
 
   # checked ahead of is_header(), which assumes a csv/xls/xlsx extension and
@@ -335,21 +227,27 @@ read_delim_cvr <- function(path) {
     is_header_cell(grid[[1]][1])
   }
   if (header) {
-    raw <- header_processor(path, grid = grid)
+    raw <- header_processor(path, n = n, grid = grid)
   } else if (!is.null(grid)) {
     raw <- grid_with_header(grid, 1L)
+    if (is.finite(n)) raw <- raw[seq_len(min(n, nrow(raw)))]
   } else {
     # names are read as written (fread keeps duplicates; readxl "minimal"
     # does not append `...NN` to them): a repeated contest name is resolved
     # by resolve_placeholder_cols() below, never by a column-index suffix
     raw <- switch(ext,
-      "CSV" = data.table::fread(path, colClasses = "character", header = TRUE),
-      "XLS" = , "XLSX" = readxl::read_excel(path, col_types = "text", .name_repair = "minimal")
+      "CSV" = data.table::fread(path, colClasses = "character", header = TRUE, nrows = n),
+      "XLS" = , "XLSX" = readxl::read_excel(path, col_types = "text", .name_repair = "minimal", n_max = n)
     )
     blank <- is.na(colnames(raw)) | colnames(raw) == ""
     colnames(raw)[blank] <- paste0("...", which(blank))
   }
   raw <- data.table::as.data.table(raw)
+  if (!header) {
+    n_read <- nrow(raw)
+    raw <- merge_shuffled_header(raw)
+  }
+  n_file_cols <- ncol(raw)
 
   colnames(raw) <- iconv(colnames(raw), to = "UTF-8", sub = "")
 
@@ -366,7 +264,8 @@ read_delim_cvr <- function(path) {
       if (old_name != canonical) {
         colnames(raw)[colnames(raw) == old_name] <- canonical
       }
-    } else {
+    } else if (!(canonical %in% colnames(raw))) {
+      # a column already named `precinct` is kept, not blanked.
       # by reference: `[[<-` would run make.unique() over repeated names
       data.table::set(raw, j = canonical, value = rep(NA_character_, nrow(raw)))
     }
@@ -382,7 +281,47 @@ read_delim_cvr <- function(path) {
 
   raw <- tibble::as_tibble(raw)
   attr(raw, "rcvr_magnitude") <- resolved$magnitude
+  # for read_delim_chunked(): how many file lines precede the first ballot
+  # row (header rows, and any header-like rows the steps above consumed),
+  # and how many columns the file has before canonical columns are added
+  if (is.finite(n)) {
+    # a 4-row header (title, then three name rows in either order) is 4 lines
+    attr(raw, "rcvr_skip") <- if (header) 4L else 1L + as.integer(n_read - nrow(raw))
+    attr(raw, "rcvr_file_cols") <- n_file_cols
+  }
   raw
+}
+
+#' Rebuild a Dominion header written in shuffled row order
+#'
+#' Pueblo CO 2022 writes the Dominion 4-row header as: key names with the
+#' party of each candidate column, then the election title, then the contest
+#' row, then the candidate row. Read as a plain CSV, the party row becomes the
+#' column names (contests "DEM", "REP", ...) and the next three rows look like
+#' ballots. Recognised by the title in the first cell of the first row, with
+#' the contest row's key cells blank. Each candidate column is renamed
+#' `contest||candidate||party`, the form `header_processor()` builds.
+#'
+#' @param raw A `data.table` straight from the reader.
+#'
+#' @return `raw`, possibly renamed and three rows shorter.
+merge_shuffled_header <- function(raw) {
+  if (nrow(raw) < 3 || !is_header_cell(as.character(raw[[1]][1]))) return(raw)
+  cell <- function(i) vapply(raw, function(x) as.character(x[i]), character(1), USE.NAMES = FALSE)
+  contest <- cell(2)
+  candidate <- cell(3)
+  is_contest <- !is.na(contest) & contest != ""
+  if (!any(is_contest) || is_contest[1]) return(raw)
+
+  nms <- colnames(raw)
+  blank <- function(x) is.na(x) | x == ""
+  party <- nms
+  party[stringr::str_detect(nms, rcvr_PLACEHOLDER_RE) | blank(nms)] <- NA
+  new <- ifelse(blank(candidate), contest, paste(contest, candidate, sep = "||"))
+  new <- ifelse(is.na(party), new, paste(new, party, sep = "||"))
+  nms[is_contest] <- new[is_contest]
+  data.table::setnames(raw, make.unique(nms, sep = rcvr_DUP_SENTINEL))
+  raw[-(1:3)]
 }
 
 #' Read a directory of delimited CVR files
@@ -429,117 +368,10 @@ read_delim_multi_cvr <- function(dir) {
 #' @return A pairs frame: `cvr_id`, `precinct`, `contest`, `raw_candidate`,
 #'   `raw_party`, `rank`.
 pairs_from_delim <- function(raw, path = NA) {
-  # the reader recorded one magnitude per multi-column contest; carry it
-  # across by hand onto the returned pairs frame, where gen_metadata() picks
-  # it up
-  magnitude <- attr(raw, "rcvr_magnitude")
-
-  raw <- fix_fragmentation(raw, path)
-  n <- nrow(raw)
-  precinct <- if ("precinct" %in% colnames(raw)) {
-    as.character(raw[["precinct"]])
-  } else {
-    rep(NA_character_, n)
-  }
-
-  # a dedup sentinel never changes what a column is: a repeated key column is
-  # still a key column, and a seat column still belongs to its contest
-  bare <- stringr::str_remove(colnames(raw), paste0(rcvr_DUP_SENTINEL, "\\d+$"))
-  is_value <- !(bare %in% c(rcvr_DROP_COLS, "ballot_style", "ballot_style2", "precinct", "cvr_id"))
-  value_cols <- which(is_value)
-  info <- parse_contest_cols(bare[value_cols])
-
-  # Collect only the cells that carry a vote, column by column. Pivoting
-  # every cell to long form first (as tidyr::pivot_longer() did) costs
-  # rows x columns long rows, nearly all of them "0" or blank, before any
-  # filter can drop them: that was the 10-180 GB peak on wide exports.
-  has_zero <- logical(n)
-  ids <- vector("list", length(value_cols))
-  vals <- vector("list", length(value_cols))
-  for (k in seq_along(value_cols)) {
-    x <- raw[[value_cols[k]]]
-    if (!is.character(x)) x <- as.character(x)
-    zero <- which(x == "0")
-    has_zero[zero] <- TRUE
-    keep <- which(!is.na(x) & x != "" & x != "0")
-    ids[[k]] <- keep
-    vals[[k]] <- x[keep]
-  }
-  lens <- lengths(ids)
-  cvr_id <- unlist(ids, use.names = FALSE)
-  value <- unlist(vals, use.names = FALSE)
-  col <- rep.int(seq_along(value_cols), lens)
-  rm(ids, vals)
-  if (is.null(cvr_id)) {
-    cvr_id <- integer(0); value <- character(0); col <- integer(0)
-  }
-
-  # some rows are aggregated counts (CvrNumber = `Redacted and Aggregated...`),
-  # and some exports repeat the header partway through (a cell equal to its
-  # own contest's name); neither is a vote
-  u <- unique(value)
-  num <- suppressWarnings(as.numeric(u))
-  aggregated <- u[!is.na(num) & num > 1]
-  junk <- value %in% aggregated | value == info$contest[col]
-  junk[is.na(junk)] <- FALSE
-  junk_rows <- unique(cvr_id[junk])
-  cvr_id <- cvr_id[!junk]; value <- value[!junk]; col <- col[!junk]
-
-  # if they voted, use the column's candidate (candidate-per-column layout);
-  # otherwise the cell is the candidate (contest-per-column layout)
-  cand <- info$candidate[col]
-  raw_candidate <- dplyr::case_when(
-    value %in% rcvr_REDACT_NAMES ~ "redacted",
-    .default = dplyr::coalesce(cand, value)
-  )
-
-  votes <- data.table::data.table(
-    cvr_id = cvr_id,
-    precinct = precinct[cvr_id],
-    contest = info$contest[col],
-    raw_candidate = raw_candidate,
-    raw_party = info$party[col],
-    rank = info$rank[col],
-    ord = col
-  )
-
-  # A ballot gets an undervote for each contest seen in its precinct that it
-  # cast no vote in. Every ballot row counts, including one with no marks at
-  # all (Georgia, Sauk WI) -- unless the row only held aggregated counts or a
-  # repeated header, which are not ballots, or the row is entirely empty.
-  # A row is a ballot if it carries an id or other key cell, or a "0".
-  key_cols <- which(!is_value & !(bare %in% c("precinct", "ballot_style", "ballot_style2")))
-  has_key <- logical(n)
-  for (j in key_cols) {
-    x <- raw[[j]]
-    has_key <- has_key | (!is.na(x) & as.character(x) != "")
-  }
-  is_ballot <- has_key | has_zero
-  is_ballot[setdiff(junk_rows, cvr_id)] <- FALSE
-  is_ballot[unique(cvr_id)] <- TRUE
-
-  ballots <- data.table::data.table(cvr_id = which(is_ballot), precinct = precinct[is_ballot])
-  first_ord <- votes[, list(ord = min(ord)), by = "contest"]
-  pc <- unique(votes[, c("precinct", "contest")])
-  grid <- ballots[pc, on = "precinct", allow.cartesian = TRUE, nomatch = NULL]
-  voted <- unique(votes[, c("cvr_id", "contest")])
-  under <- grid[!voted, on = c("cvr_id", "contest")]
-  under <- first_ord[under, on = "contest"]
-  under[, `:=`(raw_candidate = "undervote", raw_party = NA_character_, rank = NA_integer_)]
-
-  pairs <- data.table::rbindlist(list(votes, under), use.names = TRUE)
-  data.table::setorderv(pairs, c("cvr_id", "ord"))
-  pairs[, ord := NULL]
-  for (v in c("contest", "raw_candidate", "raw_party")) {
-    data.table::set(pairs, which(pairs[[v]] == ""), v, NA_character_)
-  }
-  pairs[, cvr_id := as.integer(cvr_id)]
-
-  pairs <- tibble::as_tibble(pairs)
-  attr(pairs, "rcvr_magnitude") <- magnitude
-
-  assert_pairs(pairs)
+  layout <- delim_layout(colnames(raw))
+  pairs_from_cells(delim_cells(raw, layout), layout, attr(raw, "rcvr_magnitude"), path)
 }
+
 
 #' Split delimited column names into contest, candidate, party, and rank
 #'

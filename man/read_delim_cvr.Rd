@@ -4,10 +4,13 @@
 \alias{read_delim_cvr}
 \title{Read a single delimited CVR file}
 \usage{
-read_delim_cvr(path)
+read_delim_cvr(path, n = Inf)
 }
 \arguments{
 \item{path}{Path to a CSV, XLS, or XLSX CVR.}
+
+\item{n}{Number of file rows to read after the first header line. Used to
+read the header of a large file without reading the data.}
 }
 \value{
 A wide tibble, one row per ballot, with \code{precinct} and

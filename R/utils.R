@@ -203,7 +203,9 @@ is_header <- function(path) {
   # get the top-left cell's contents
   if (stringr::str_detect(path, "csv$|CSV$")) {
     rlang::check_installed("data.table", reason = "to read CSV files")
-    d <- data.table::fread(path, nrows=1, select=1, header=FALSE)[[1]]
+    # sep fixed: a one-field title line ("Burlington General Election 2024")
+    # makes fread guess a space separator
+    d <- data.table::fread(path, nrows=1, select=1, header=FALSE, sep=",")[[1]]
   } else if (stringr::str_detect(path, "xls$|xlsx$|XLS$|XLSX$")) {
     rlang::check_installed("readxl", reason = "to read Excel files")
     d <- readxl::read_excel(path, range = "A1", col_names = FALSE, .name_repair = "unique_quiet") |> dplyr::pull()
@@ -282,13 +284,38 @@ header_processor <- function(path, n = Inf, grid = NULL) {
   # and a sentinel inserted here would sit mid-string where
   # `pairs_from_delim()` cannot strip it. No magnitude is inferred: a run here
   # is extra candidates, not extra seats.
-  colnames(df) <- resolve_placeholder_cols(colnames(df), sentinel = FALSE, warn = FALSE)$names
+  # Pueblo CO's 2022 recount writes the three rows in another order: key
+  # names with each candidate's party, then contests, then candidates. Its
+  # contests sit in the first data row instead of the names (Dominion contest
+  # names end in "(Vote For=N)"); rotate the rows into the usual order. The
+  # party row has blanks for no party, which are not merged ranges, so the
+  # placeholder fill below must not touch it.
+  vote_for <- function(x) sum(stringr::str_detect(x, stringr::fixed("(Vote For=")), na.rm = TRUE)
+  first <- vapply(df, function(x) as.character(x[1]), character(1), USE.NAMES = FALSE)
+  rotated <- nrow(df) >= 2 && vote_for(colnames(df)) == 0 && vote_for(first) > 0
+  if (rotated) {
+    df <- data.table::as.data.table(df)
+    second <-vapply(df, function(x) as.character(x[2]), character(1), USE.NAMES = FALSE)
+    party <- colnames(df)
+    is_contest <- !is.na(first) & first != ""
+    party[stringr::str_detect(party, rcvr_PLACEHOLDER_RE) | party == "" | !is_contest] <- NA
+    contest <- ifelse(is_contest, first, colnames(df))
+    contest <- resolve_placeholder_cols(contest, sentinel = FALSE, warn = FALSE)$names
+    data.table::set(df, i = 1L, j = seq_along(df), value = as.list(second))
+    data.table::set(df, i = 2L, j = seq_along(df), value = as.list(party))
+    colnames(df) <- contest
+  } else {
+    colnames(df) <- resolve_placeholder_cols(colnames(df), sentinel = FALSE, warn = FALSE)$names
+  }
 
   ncols = ncol(df)
 
   # sometimes these header files have repeated rows in the middle that need to be removed
-  bad_rows = which(df[ncols-1] == colnames(df)[ncols-1] |> stringr::str_remove("\\.\\.\\.\\d+")) |>
-    purrr::map(~ (.x - 1):(.x + 2)) |>
+  # `[[`: on a data.table (every CSV), `df[j]` is row j, not column j
+  bad_rows = which(df[[ncols-1]] == colnames(df)[ncols-1] |> stringr::str_remove("\\.\\.\\.\\d+")) |>
+    # the block is title, contest, candidate, party rows (rotated: title,
+    # party, contest, candidate), and the match is on the contest row
+    purrr::map(~ (.x - 1 - rotated):(.x + 2 - rotated)) |>
     unlist()
 
   colnames(df) = paste(colnames(df), df[1, ], df[2, ], sep = "||") |>

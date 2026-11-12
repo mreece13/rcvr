@@ -26,7 +26,9 @@
 #'   top-level subdirectory.
 #' @keywords internal
 unzip_cvr <- function(path, exdir = tempfile("rcvr_zip_")) {
-  parts <- strsplit(path, "::", fixed = TRUE)[[1]]
+  # the unzip binary gets a shell-quoted path, so `~` would not be expanded
+  parts <- path.expand(strsplit(path, "::", fixed = TRUE)[[1]])
+  path <- paste(parts, collapse = "::")
   if (length(parts) > 1) {
     checkmate::assert_file_exists(parts[1])
     fs::dir_create(exdir)

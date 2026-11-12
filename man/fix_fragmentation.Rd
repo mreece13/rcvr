@@ -15,20 +15,8 @@ fix_fragmentation(raw, path = NA)
 \code{raw}, with continuation rows merged into their ballot.
 }
 \description{
-Some exports write one row per ballot \emph{card}: a two-card ballot is two
-consecutive rows with the same ballot style, the first holding the card-1
-contests and the second the card-2 contests. A contest that is on a card
-but not voted is written as \code{"0"}; a contest that is not on that card is
-blank. So within one ballot style, card rows have complementary coverage.
-}
-\details{
-Detection is per ballot style (with any \code{" [n]"} card suffix stripped):
-take the style's most-filled contest column as the anchor; columns filled
-(almost) only on anchor rows are card-1 columns, columns filled (almost)
-only on non-anchor rows are continuation columns. A row with nothing in
-the card-1 columns and something in the continuation columns is a
-continuation and is merged into the row just above it, provided that row
-has the same style. Ballot styles whose contests simply differ (one
-party's primary, a city's local races) never split \emph{within} a style, so
-they are left alone.
+The wide-frame form of the card linking that \code{pairs_from_delim()} applies:
+see \code{fragment_links()} for the rule. A continuation card row is merged
+into the row of the voter's first card; rows that cannot be linked stay
+separate (warning \code{rcvr_unlinked_cards}).
 }

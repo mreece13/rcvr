@@ -152,7 +152,14 @@ read_cvr <- function(path, type = NULL, state = NA_character_, county = NA_chara
   if (verbose) cli::cli_alert_info("Cleaning {.file {path}}")
 
   if (type == "DELIM") {
-    pairs <- read_delim_cvr(path) |> pairs_from_delim(path)
+    # a wide CSV costs ~8 bytes per cell read whole; stream large ones
+    big <- stringr::str_detect(path, stringr::regex("\\.csv$", ignore_case = TRUE)) &&
+      isTRUE(file.size(path) > getOption("rcvr.chunk_bytes", 1e9))
+    pairs <- if (big) {
+      read_delim_chunked(path)
+    } else {
+      read_delim_cvr(path) |> pairs_from_delim(path)
+    }
   } else if (type == "DELIM-MULTI") {
     pairs <- read_delim_multi_cvr(path) |> pairs_from_delim(path)
   } else if (type == "JSON") {
