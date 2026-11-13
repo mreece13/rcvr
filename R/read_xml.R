@@ -45,6 +45,7 @@ xml_ballot <- function(path, i) {
 
   rows <- lapply(contests, function(con) {
     contest <- xml_chr(con, "./Name")
+    contest_id <- xml_chr(con, "./Id")
 
     options <- xml2::xml_find_all(con, "./Options/Option | ./Options[not(Option)][Value]")
     resolved <- lapply(options, xml_option)
@@ -62,14 +63,17 @@ xml_ballot <- function(path, i) {
       marked <- "undervote"
     }
 
-    list(contest = rep(contest, length(marked)), raw_candidate = marked)
+    list(contest = rep(contest, length(marked)), raw_candidate = marked,
+         contest_id = rep(contest_id, length(marked)))
   })
 
   contest <- unlist(lapply(rows, `[[`, "contest"), use.names = FALSE)
   raw_candidate <- unlist(lapply(rows, `[[`, "raw_candidate"), use.names = FALSE)
+  contest_id <- unlist(lapply(rows, `[[`, "contest_id"), use.names = FALSE)
   if (is.null(contest)) {
     contest <- character(0)
     raw_candidate <- character(0)
+    contest_id <- character(0)
   }
 
   tibble::tibble(
@@ -78,7 +82,8 @@ xml_ballot <- function(path, i) {
     contest = stringr::str_replace_all(contest, stringr::fixed("\n"), " "),
     raw_candidate = stringr::str_replace_all(raw_candidate, stringr::fixed("\n"), " "),
     raw_party = NA_character_,
-    rank = NA_integer_
+    rank = NA_integer_,
+    contest_id = contest_id
   )
 }
 
@@ -113,6 +118,23 @@ read_xml_cvr <- function(path) {
 
   raw <- purrr::imap(files, xml_ballot) |>
     purrr::list_rbind()
+
+  # Hart names contests without their jurisdiction ("Mayor", "Trustee,
+  # Place 1"), so different cities' contests share a <Name> and differ only
+  # in <Id>. A name carried by more than one Id gets the Id's first 8
+  # characters appended, "Mayor [46075cc4]"; unique names are unchanged.
+  shared <- raw |>
+    dplyr::filter(!is.na(.data$contest_id)) |>
+    dplyr::distinct(.data$contest, .data$contest_id) |>
+    dplyr::count(.data$contest) |>
+    dplyr::filter(.data$n > 1)
+  raw <- raw |>
+    dplyr::mutate(contest = dplyr::if_else(
+      .data$contest %in% shared$contest & !is.na(.data$contest_id),
+      paste0(.data$contest, " [", substr(.data$contest_id, 1, 8), "]"),
+      .data$contest
+    )) |>
+    dplyr::select(-"contest_id")
 
   # a marked option with neither a Name nor write-in markup is not the same
   # thing as an undervote -- a vote was cast, we just can't identify it -- so

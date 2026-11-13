@@ -38,6 +38,8 @@ failed county rather than stopping the whole run) is a classed condition:
   `<Name>` nor write-in text, so its cast vote cannot be identified
   (`read_xml_cvr()`).
 * `rcvr_bad_path` — `clean_cvr(path =)` is not a single non-`NA` string.
+* `rcvr_truncated_read` — the CSV reader stopped early on a row with the
+  wrong number of fields, so later rows were never read (`clean_cvr()`).
 
 ## Breaking changes
 
@@ -116,6 +118,16 @@ failed county rather than stopping the whole run) is a classed condition:
 * `clean_cvr(path =)` now aborts with `rcvr_bad_path` on a missing or
   non-string `path` instead of an unclassed error surfacing from deeper in
   the call stack (`fs::path_real()`/`classify_cvr()`).
+* Delimited headers: a candidate or party starting with "NA" (`NATHAN
+  HOCHMAN`, `NANCY CAHILL`) no longer loses those letters and gets glued to
+  its contest name; only a whole `NA` header component is removed.
+* Dominion CSVs that write the software version (`5.15.16.1`) in the first
+  cell of the contest row (Mercer NJ 2022) no longer turn every ballot
+  metadata column, precinct included, into one contest.
+* Hart XML contests that share a `<Name>` but not an `<Id>` (Tarrant TX:
+  every city's "Mayor") are no longer merged; such names get the Id's first
+  8 characters appended, `"Mayor [46075cc4]"`. Unique names are unchanged.
+* `"District"` is read as the precinct column (Ocean NJ 2024).
 
 ## Dependencies
 

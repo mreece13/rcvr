@@ -188,3 +188,36 @@ test_that("the duckdb xlsx reader matches readxl (Dane WI memory)", {
     expect_equal(b, read_delim_cvr(f) |> pairs_from_delim(f), info = basename(dirname(f)))
   }
 })
+
+test_that("Hart contests sharing a Name but not an Id stay separate (Tarrant TX)", {
+  dir <- withr::local_tempdir()
+  ballot <- function(id, cand) sprintf(paste0(
+    '<?xml version="1.0" encoding="utf-8"?><Cvr xmlns="http://tempuri.org/CVRDesign.xsd">',
+    '<Contests><Contest><Name>Mayor</Name><Id>%s</Id><Options><Option><Name>%s</Name>',
+    '<Id>o</Id><Value>1</Value></Option></Options></Contest>',
+    '<Contest><Name>Prop A</Name><Id>p0000000-x</Id><Options><Option><Name>FOR</Name>',
+    '<Id>o</Id><Value>1</Value></Option></Options></Contest></Contests>',
+    '<PrecinctSplit><Name>1</Name><Id>i</Id></PrecinctSplit></Cvr>'), id, cand)
+  writeLines(ballot("aaaaaaaa-1111", "JIM ROSS"), file.path(dir, "1.xml"))
+  writeLines(ballot("bbbbbbbb-2222", "ARMIN MIZANI"), file.path(dir, "2.xml"))
+  pairs <- read_xml_cvr(dir)
+  expect_setequal(unique(pairs$contest), c("Mayor [aaaaaaaa]", "Mayor [bbbbbbbb]", "Prop A"))
+  expect_equal(dplyr::filter(pairs, raw_candidate == "JIM ROSS")$contest, "Mayor [aaaaaaaa]")
+  expect_false("contest_id" %in% names(pairs))
+})
+
+test_that("a CSV row with too few fields aborts instead of truncating", {
+  f <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c("CvrNumber,Precinct,MAYOR,COUNCIL", "1,P1,ANN,BOB", "2,P1,ANN", "3,P1,ANN,BOB"), f)
+  expect_error(clean_cvr(f, generate_metadata = TRUE, verbose = FALSE), class = "rcvr_truncated_read")
+})
+
+test_that("a District column is the precinct, not a contest (Ocean NJ 2024)", {
+  f <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c("Cast Vote Record,Batch,District,MAYOR (101)",
+               "1,B1,TOMS RIVER WARD 4 DISTRICT 45,ANN",
+               "2,B1,TOMS RIVER WARD 4 DISTRICT 46,BOB"), f)
+  pairs <- read_cvr(f)
+  expect_setequal(unique(pairs$contest), "MAYOR (101)")
+  expect_setequal(unique(pairs$precinct), c("TOMS RIVER WARD 4 DISTRICT 45", "TOMS RIVER WARD 4 DISTRICT 46"))
+})

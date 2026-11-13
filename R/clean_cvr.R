@@ -227,7 +227,18 @@ clean_cvr <- function(
   }
 
   if (is.null(pairs)) {
-    pairs <- read_cvr(path, type = type, state = state, county = county, verbose = verbose)
+    # fread only warns when a row has the wrong field count ("Stopped early
+    # on line N") and returns the rows before it, so a malformed file would
+    # pass as a short county (Passaic NJ 2024: 3,531 of 204,153 ballots)
+    pairs <- withCallingHandlers(
+      read_cvr(path, type = type, state = state, county = county, verbose = verbose),
+      warning = function(w) {
+        if (grepl("Stopped early on line", conditionMessage(w), fixed = TRUE)) {
+          cli::cli_abort(c("The CSV reader stopped early; later rows were not read.",
+                           "x" = conditionMessage(w)), class = "rcvr_truncated_read")
+        }
+      }
+    )
   } else {
     assert_pairs(pairs)
   }

@@ -190,7 +190,9 @@ rcvr_RENAME_COLS <- c(
   precinct = "PRECINCT CODE",
   precinct = "PRECINCT NAME",
   precinct = "PrecinctPortion",
-  precinct = "PrecinctStyleName"
+  precinct = "PrecinctStyleName",
+  # Ocean NJ 2024 (same export family as Passaic's "Precinct" column)
+  precinct = "District"
 )
 
 #' Check if delimited file has an unconventional header
@@ -290,6 +292,10 @@ header_processor <- function(path, n = Inf, grid = NULL) {
   # names end in "(Vote For=N)"); rotate the rows into the usual order. The
   # party row has blanks for no party, which are not merged ranges, so the
   # placeholder fill below must not touch it.
+  # Some Dominion exports (Mercer NJ 2022) write the software version
+  # ("5.15.16.1") in the first cell of the contest row, which would otherwise
+  # become the contest of every metadata column as a merged range.
+  if (grepl("^\\d+(\\.\\d+)+$", colnames(df)[1])) colnames(df)[1] <- "V1"
   vote_for <- function(x) sum(stringr::str_detect(x, stringr::fixed("(Vote For=")), na.rm = TRUE)
   first <- vapply(df, function(x) as.character(x[1]), character(1), USE.NAMES = FALSE)
   rotated <- nrow(df) >= 2 && vote_for(colnames(df)) == 0 && vote_for(first) > 0
@@ -320,8 +326,9 @@ header_processor <- function(path, n = Inf, grid = NULL) {
 
   colnames(df) = paste(colnames(df), df[1, ], df[2, ], sep = "||") |>
     stringr::str_remove("\\.\\.\\.\\d+") |>
-    stringr::str_remove_all("^NA\\|\\||\\|\\|NA|^\\|\\|") |>
-    stringr::str_remove_all("\\|\\|NA|^\\|\\|") |>
+    # "NA" only as a whole component, or "||NATHAN HOCHMAN" loses its "NA"
+    stringr::str_remove_all("^NA\\|\\||\\|\\|NA(?=\\|\\||$)|^\\|\\|") |>
+    stringr::str_remove_all("\\|\\|NA(?=\\|\\||$)|^\\|\\|") |>
     iconv(to = "UTF-8", sub = "") |>
     stringr::str_remove_all("^V\\d+") |>
     stringr::str_remove_all("^\\|\\|") |>
