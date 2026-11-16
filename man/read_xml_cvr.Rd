@@ -7,7 +7,15 @@
 read_xml_cvr(path)
 }
 \arguments{
-\item{path}{Path to the directory of \code{.xml} files.}
+\item{path}{Path to the directory of \code{.xml} files.
+
+Progress is signalled through \pkg{progressr} about every 1\% of files,
+and nothing is shown unless a handler is enabled. Interactively, wrap the
+call in \code{progressr::with_progress()}. progressr is off in non-interactive
+sessions, so in an \code{Rscript} (output to a log) run
+\code{options(progressr.enable = TRUE)}, \code{progressr::handlers(global = TRUE)} and
+\code{progressr::handlers("cli")} first. The cli handler writes a line with
+percent, sheet count and ETA every few seconds at most.}
 }
 \value{
 A pairs frame. \code{raw_party} and \code{rank} are always \code{NA} — this

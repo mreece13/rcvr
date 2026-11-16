@@ -75,3 +75,17 @@ test_that("a vote-for-2 contest with two marked options emits two rows", {
   expect_true(all(pairs$contest == "CITY COUNCIL"))
   expect_setequal(pairs$raw_candidate, c("ALICE JONES", "BOB SMITH"))
 })
+
+test_that("read_xml_cvr signals progress, ending at the last file", {
+  n_files <- length(list.files(fixture_path("xml"), pattern = "\\.xml$", recursive = TRUE))
+  withr::local_options(progressr.enable = TRUE)
+  msgs <- character()
+  withCallingHandlers(
+    pairs <- read_xml_cvr(fixture_path("xml")),
+    progression = function(cond) {
+      if (isTRUE(nzchar(cond$message))) msgs <<- c(msgs, cond$message)
+    }
+  )
+  expect_gt(length(msgs), 0)
+  expect_equal(utils::tail(msgs, 1), sprintf("XML sheet %s of %s", n_files, n_files))
+})

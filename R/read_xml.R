@@ -96,6 +96,14 @@ xml_ballot <- function(path, i) {
 #'
 #' @param path Path to the directory of `.xml` files.
 #'
+#' Progress is signalled through \pkg{progressr} about every 1% of files,
+#' and nothing is shown unless a handler is enabled. Interactively, wrap the
+#' call in `progressr::with_progress()`. progressr is off in non-interactive
+#' sessions, so in an `Rscript` (output to a log) run
+#' `options(progressr.enable = TRUE)`, `progressr::handlers(global = TRUE)` and
+#' `progressr::handlers("cli")` first. The cli handler writes a line with
+#' percent, sheet count and ETA every few seconds at most.
+#'
 #' @return A pairs frame. `raw_party` and `rank` are always `NA` — this
 #'   vendor's format carries neither.
 #' @export
@@ -116,7 +124,20 @@ read_xml_cvr <- function(path) {
     )
   }
 
-  raw <- purrr::imap(files, xml_ballot) |>
+  # Large Hart exports run for hours (Tarrant TX 2024: 838K sheets, 4.4 h).
+  # Report progress about every 1% of sheets through progressr, which shows
+  # nothing unless the caller enables a handler (see the docs above).
+  n <- length(files)
+  step <- max(1L, n %/% 100L)
+  p <- progressr::progressor(steps = ceiling(n / step))
+  raw <- purrr::imap(files, function(f, i) {
+    out <- xml_ballot(f, i)
+    if (i %% step == 0L || i == n) {
+      p(message = sprintf("XML sheet %s of %s",
+                          format(i, big.mark = ","), format(n, big.mark = ",")))
+    }
+    out
+  }) |>
     purrr::list_rbind()
 
   # Hart names contests without their jurisdiction ("Mayor", "Trustee,
