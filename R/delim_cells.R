@@ -172,6 +172,10 @@ drop_cell_rows <- function(cells, drop) {
 fragment_links <- function(cells, path = NA) {
   n <- cells$n
   if (n < 2) return(NULL)
+  # no ballot style in the file (Salt Lake UT 2025 non-RCV export): the
+  # synthesised all-NA column would make the whole file one "style", and the
+  # anchor rule then calls most single-card ballots continuations
+  if (all(is.na(cells$key$style) | cells$key$style == "")) return(NULL)
   style <- stringr::str_remove(cells$key$style, " \\[\\d+\\]$")
   style[is.na(style)] <- ""
 
@@ -354,6 +358,18 @@ pairs_from_cells <- function(cells, layout, magnitude = integer(0), path = NA) {
   first_ord <- votes[, list(ord = min(ord)), by = "contest"]
   pc <- unique(votes[, c("precinct", "contest")])
   grid <- ballots[pc, on = "precinct", allow.cartesian = TRUE, nomatch = NULL]
+  # A ballot with no precinct would join every contest in the file (all NA
+  # precincts form one group). For those, the contests on the ballot are the
+  # ones with a filled cell ("0" = on the ballot, not voted).
+  na_prec <- is.na(ballots$precinct)
+  if (any(na_prec)) {
+    cmap <- unique(data.table::data.table(cid = layout$cid, contest = info$contest))
+    fb <- cells$fill[, list(cvr_id = ballot[row], cid)]
+    fb <- unique(cmap[fb, on = "cid", nomatch = NULL][, c("cvr_id", "contest")])
+    fb <- fb[cvr_id %in% ballots$cvr_id[na_prec] & contest %in% pc$contest]
+    fb[, precinct := NA_character_]
+    grid <- data.table::rbindlist(list(grid[!is.na(precinct)], fb), use.names = TRUE)
+  }
   voted <- unique(votes[, c("cvr_id", "contest")])
   under <- grid[!voted, on = c("cvr_id", "contest")]
   under <- first_ord[under, on = "contest"]

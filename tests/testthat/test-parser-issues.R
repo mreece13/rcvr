@@ -221,3 +221,22 @@ test_that("a District column is the precinct, not a contest (Ocean NJ 2024)", {
   expect_setequal(unique(pairs$contest), "MAYOR (101)")
   expect_setequal(unique(pairs$precinct), c("TOMS RIVER WARD 4 DISTRICT 45", "TOMS RIVER WARD 4 DISTRICT 46"))
 })
+
+test_that("no ballot style and no precinct: no card linking, undervotes only for contests on the ballot (Salt Lake UT 2025)", {
+  f <- withr::local_tempfile(fileext = ".csv")
+  # Dominion candidate-per-column layout without BallotType or Precinct.
+  # "0" = contest on the ballot, not voted; blank = not on the ballot.
+  writeLines(c(
+    "CvrNumber,TabulatorNum,BatchId,RecordId,MAYOR,MAYOR,COUNCIL,COUNCIL",
+    ",,,,ANN,BOB,CAL,DEE",
+    "1,1,1,1,1,0,,",
+    "2,1,1,2,,,1,0",
+    "3,1,1,3,,,0,0",
+    "4,1,1,4,0,1,,"
+  ), f)
+  pairs <- read_cvr(f)
+  expect_equal(dplyr::n_distinct(pairs$cvr_id), 4)
+  under <- dplyr::filter(pairs, raw_candidate == "undervote")
+  expect_equal(nrow(under), 1)
+  expect_equal(under$contest, "COUNCIL")
+})

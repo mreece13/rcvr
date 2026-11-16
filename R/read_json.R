@@ -134,12 +134,13 @@ read_json_cvr <- function(path) {
   # separately so the abort names the manifest at fault. Some exports
   # (Alaska 2026) also write PartyId 0 for a mark with no affiliation
   # (ballot measures, judges); 0 is never a manifest id, so it is treated
-  # like -1L.
+  # like -1L. PrecinctPortionId 0 is the same (San Francisco 2024: a few
+  # sessions with no precinct portion) and leaves precinct NA.
   unresolved <- list(
     CandidateManifest = dplyr::filter(joined, candidateId != -1L, is.na(raw_candidate)),
     ContestManifest = dplyr::filter(joined, contestId != -1L, is.na(contest)),
     PartyManifest = dplyr::filter(joined, !partyId %in% c(-1L, 0L), is.na(raw_party)),
-    PrecinctPortionManifest = dplyr::filter(joined, precinctPortionId != -1L, is.na(precinct))
+    PrecinctPortionManifest = dplyr::filter(joined, !precinctPortionId %in% c(-1L, 0L), is.na(precinct))
   )
   bad_manifest <- names(unresolved)[vapply(unresolved, nrow, integer(1)) > 0]
   if (length(bad_manifest) > 0) {

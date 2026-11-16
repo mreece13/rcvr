@@ -128,6 +128,15 @@ failed county rather than stopping the whole run) is a classed condition:
   every city's "Mayor") are no longer merged; such names get the Id's first
   8 characters appended, `"Mayor [46075cc4]"`. Unique names are unchanged.
 * `"District"` is read as the precinct column (Ocean NJ 2024).
+* A delimited CVR with no ballot-style column no longer goes through card
+  linking: the synthesised all-`NA` style made the whole file one style, so
+  most single-card ballots were called continuation cards (Salt Lake UT 2025).
+* A ballot with no precinct gets undervotes only for the contests on its
+  ballot (filled cells, `"0"` included), not for every contest in the file
+  (Salt Lake UT 2025: 10.7M undervote rows became 7,787).
+* Dominion JSON `PrecinctPortionId` 0 is treated like -1 (no precinct, `NA`)
+  instead of aborting with `rcvr_unresolved_ids`, matching `PartyId` 0
+  (San Francisco CA 2024).
 
 ## Dependencies
 

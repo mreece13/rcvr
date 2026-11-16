@@ -117,3 +117,16 @@ test_that("a contest whose only marks are ambiguous becomes an undervote", {
   expect_true(is.na(sen2$rank))
   expect_equal(sen2$precinct, "PRECINCT 001")
 })
+
+test_that("PrecinctPortionId 0 is treated as no precinct, not an unresolved id", {
+  skip_if_no_dominion()
+  dir <- withr::local_tempdir()
+  file.copy(list.files(fixture_path("json"), full.names = TRUE), dir)
+  cvr <- file.path(dir, "CvrExport.json")
+  txt <- readLines(cvr, warn = FALSE)
+  writeLines(gsub('"PrecinctPortionId":\\s*50', '"PrecinctPortionId": 0', txt), cvr)
+
+  pairs <- read_json_cvr(dir)
+  expect_true(all(is.na(pairs$precinct)))
+  expect_true("JOSEPH R BIDEN" %in% pairs$raw_candidate)
+})
