@@ -340,3 +340,13 @@ test_that("rows wider than the header abort rather than becoming extra seats (Mo
   ), path)
   expect_error(read_cvr(path, type = "delim"), class = "rcvr_bad_delim")
 })
+
+test_that("names that are not valid UTF-8 pass through the name clean-up unchanged (Bergen NJ)", {
+  bad <- "Jos\xe9 \"\"Pepe\"\" Ruiz "
+  pairs <- tibble::tibble(cvr_id = 1:2, precinct = "P1", contest = c("Mayor ", "Mayor"),
+                          raw_candidate = c(bad, "Ann  "), raw_party = NA_character_, rank = NA_integer_)
+  out <- trim_names(undouble_quotes(pairs))
+  expect_identical(out$raw_candidate[1], bad)
+  expect_equal(out$raw_candidate[2], "Ann")
+  expect_equal(out$contest, c("Mayor", "Mayor"))
+})

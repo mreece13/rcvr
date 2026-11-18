@@ -450,7 +450,11 @@ undouble_quotes <- function(pairs) {
   for (v in intersect(c("precinct", "contest", "raw_candidate", "raw_party"), names(pairs))) {
     x <- pairs[[v]]
     if (!is.character(x)) next
-    hit <- which(stringr::str_detect(x, stringr::fixed('""')))
+    # strings that are not valid UTF-8 (Bergen NJ, Broward FL, Collin TX)
+    # are left exactly as read: stringr aborts on them, and their store keys
+    # were seeded from the unmodified bytes
+    ok <- !is.na(x) & validUTF8(x)
+    hit <- which(ok)[stringr::str_detect(x[ok], stringr::fixed('""'))]
     if (length(hit) == 0) next
     x[hit] <- stringr::str_replace_all(x[hit], stringr::fixed('""'), '"')
     pairs[[v]] <- x
@@ -474,7 +478,9 @@ trim_names <- function(pairs) {
   for (v in intersect(c("contest", "raw_candidate", "raw_party"), names(pairs))) {
     x <- pairs[[v]]
     if (!is.character(x)) next
-    hit <- which(x != stringr::str_trim(x))
+    # invalid UTF-8 is left as read, as in undouble_quotes()
+    ok <- !is.na(x) & validUTF8(x)
+    hit <- which(ok)[x[ok] != stringr::str_trim(x[ok])]
     if (length(hit) == 0) next
     x[hit] <- stringr::str_trim(x[hit])
     x[hit][x[hit] == ""] <- NA_character_

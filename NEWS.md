@@ -147,6 +147,9 @@ failed county rather than stopping the whole run) is a classed condition:
   not on that card; Manatee FL 2020 writes each of a voter's two cards as
   its own row, with no style to link them, and the precinct grid gave every
   second card an undervote for President (216,841 rows).
+* The quote and whitespace clean-up skips names that are not valid UTF-8,
+  which stringr cannot process; they pass through exactly as read, so their
+  existing store keys still match (Bergen NJ, Broward FL, Collin TX 2020).
 * One-row-header CSVs are read with `fill = TRUE`. Ragged-right rows, which
   omit their empty trailing cells, are padded (Pickaway OH 2020: 24 to 27
   fields against a 27-field header). This replaces the `rcvr_truncated_read`
