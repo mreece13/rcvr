@@ -141,6 +141,12 @@ failed county rather than stopping the whole run) is a classed condition:
   ""Tony"" Eldon"`) is read as one quote. data.table 1.18.4's `fread()`
   returns the inner pair doubled, so the delimited and special readers keyed
   such names differently from an Excel or JSON export (Manatee FL 2020).
+* A delimited CVR whose vendor writes its own `"undervote"` cells gets
+  undervotes only for the contests with a filled cell on each row, as a
+  ballot with no precinct already did. A blank there means the contest is
+  not on that card; Manatee FL 2020 writes each of a voter's two cards as
+  its own row, with no style to link them, and the precinct grid gave every
+  second card an undervote for President (216,841 rows).
 
 ## Dependencies
 

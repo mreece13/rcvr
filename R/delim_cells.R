@@ -361,14 +361,24 @@ pairs_from_cells <- function(cells, layout, magnitude = integer(0), path = NA) {
   # A ballot with no precinct would join every contest in the file (all NA
   # precincts form one group). For those, the contests on the ballot are the
   # ones with a filled cell ("0" = on the ballot, not voted).
-  na_prec <- is.na(ballots$precinct)
-  if (any(na_prec)) {
+  #
+  # The same holds for every ballot when the vendor writes its own
+  # undervotes (an "undervote" cell, Manatee FL 2020): a blank cell then
+  # means the contest is not on that card, not that it went unvoted. Without
+  # a ballot style the cards of one voter cannot be linked, so a precinct
+  # grid would give each card an undervote for every contest on the voter's
+  # other cards (Manatee: 216,841 president undervotes on second cards).
+  explicit_under <- any(stringr::str_to_lower(value) == "undervote", na.rm = TRUE)
+  scoped <- is.na(ballots$precinct) | explicit_under
+  if (any(scoped)) {
     cmap <- unique(data.table::data.table(cid = layout$cid, contest = info$contest))
     fb <- cells$fill[, list(cvr_id = ballot[row], cid)]
     fb <- unique(cmap[fb, on = "cid", nomatch = NULL][, c("cvr_id", "contest")])
-    fb <- fb[cvr_id %in% ballots$cvr_id[na_prec] & contest %in% pc$contest]
-    fb[, precinct := NA_character_]
-    grid <- data.table::rbindlist(list(grid[!is.na(precinct)], fb), use.names = TRUE)
+    fb <- fb[cvr_id %in% ballots$cvr_id[scoped] & contest %in% pc$contest]
+    data.table::set(fb, j = "precinct", value = precinct[fb$cvr_id])
+    grid <- data.table::rbindlist(
+      list(grid[!(cvr_id %in% ballots$cvr_id[scoped])], fb), use.names = TRUE
+    )
   }
   voted <- unique(votes[, c("cvr_id", "contest")])
   under <- grid[!voted, on = c("cvr_id", "contest")]

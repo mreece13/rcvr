@@ -254,3 +254,33 @@ test_that("a CSV-escaped quote in a name is read as one quote (Manatee FL)", {
   expect_false(any(stringr::str_detect(c(pairs$raw_candidate, pairs$contest), stringr::fixed('""')), na.rm = TRUE))
   expect_false(is.null(attr(pairs, "rcvr_magnitude")))
 })
+
+test_that("a vendor's own undervotes scope each card to its filled cells (Manatee FL)", {
+  # two cards per voter, no ballot style: card 1 holds President, card 2
+  # holds Mayor. A blank means "not on this card", never an undervote.
+  path <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c(
+    "Cast Vote Record,Precinct,President,Mayor",
+    "1,101,REP Ann,",
+    "2,101,,Bob",
+    "3,101,undervote,",
+    "4,101,,undervote"
+  ), path)
+  pairs <- read_cvr(path, type = "delim")
+  expect_equal(nrow(pairs), 4L)
+  expect_equal(sum(pairs$raw_candidate == "undervote"), 2L)
+  expect_setequal(pairs$contest[pairs$cvr_id == 1L], "President")
+  expect_setequal(pairs$contest[pairs$cvr_id == 2L], "Mayor")
+  expect_true(all(pairs$precinct == "101"))
+})
+
+test_that("blank cells still synthesise undervotes when the vendor writes none", {
+  path <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c(
+    "Cast Vote Record,Precinct,President,Mayor",
+    "1,101,REP Ann,",
+    "2,101,,Bob"
+  ), path)
+  pairs <- read_cvr(path, type = "delim")
+  expect_equal(sum(pairs$raw_candidate == "undervote"), 2L)
+})
