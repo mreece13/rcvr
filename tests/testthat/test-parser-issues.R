@@ -206,10 +206,17 @@ test_that("Hart contests sharing a Name but not an Id stay separate (Tarrant TX)
   expect_false("contest_id" %in% names(pairs))
 })
 
-test_that("a CSV row with too few fields aborts instead of truncating", {
+test_that("a CSV row with too few fields is padded and every row is read", {
+  # fread() used to stop at such a row and return the rows before it
+  # (Passaic NJ 2024: 3,531 of 204,153 ballots), which rcvr_truncated_read
+  # caught. Read with fill = TRUE nothing stops early: the short row is
+  # padded (ragged-right exports omit empty trailing cells, Pickaway OH 2020)
+  # and the rows after it are kept.
   f <- withr::local_tempfile(fileext = ".csv")
   writeLines(c("CvrNumber,Precinct,MAYOR,COUNCIL", "1,P1,ANN,BOB", "2,P1,ANN", "3,P1,ANN,BOB"), f)
-  expect_error(clean_cvr(f, generate_metadata = TRUE, verbose = FALSE), class = "rcvr_truncated_read")
+  pairs <- read_cvr(f, type = "delim")
+  expect_equal(sort(unique(pairs$cvr_id)), 1:3)
+  expect_equal(pairs$raw_candidate[pairs$cvr_id == 2L & pairs$contest == "COUNCIL"], "undervote")
 })
 
 test_that("a District column is the precinct, not a contest (Ocean NJ 2024)", {
@@ -296,4 +303,40 @@ test_that("edge whitespace is trimmed from contest and candidate names (Passaic 
   expect_true(all(c("Tammy Duckworth", "Ann Lee") %in% pairs$raw_candidate))
   expect_true("US Senate" %in% pairs$contest)
   expect_false(any(pairs$raw_candidate != stringr::str_trim(pairs$raw_candidate), na.rm = TRUE))
+})
+
+test_that("ragged-right rows are padded, not read as truncated (Pickaway OH)", {
+  path <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c(
+    "Cast Vote Record,Precinct,For President,For Sheriff,Issue 1",
+    "1,P1,Rep Ann,Rep Bob",
+    "2,P1,Dem Cal,Dem Dee,Yes",
+    "3,P2,Rep Ann"
+  ), path)
+  pairs <- read_cvr(path, type = "delim")
+  expect_setequal(unique(pairs$contest), c("For President", "For Sheriff", "Issue 1"))
+  expect_equal(length(unique(pairs$cvr_id)), 3L)
+})
+
+test_that("a header split by unquoted commas inside names is rebuilt (Fayette OH)", {
+  path <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c(
+    "Cast Vote Record,Precinct,For Sheriff,Village Levy - Police, 2 mills, Continuing,For Coroner",
+    "1,P1,Rep Ann,For the Tax Levy,Dem Cal",
+    "2,P1,Dem Bob,Against the Tax Levy,Rep Dee"
+  ), path)
+  pairs <- read_cvr(path, type = "delim")
+  expect_setequal(unique(pairs$contest),
+                  c("For Sheriff", "Village Levy - Police, 2 mills, Continuing", "For Coroner"))
+  expect_false(any(pairs$contest == "P1"))
+})
+
+test_that("rows wider than the header abort rather than becoming extra seats (Mono CA)", {
+  path <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c(
+    "CVRNumber,PrecinctId,President,Supervisor",
+    "1,5,Ann,Bob",
+    "2,5,Ann,Bob,Carl,Dee"
+  ), path)
+  expect_error(read_cvr(path, type = "delim"), class = "rcvr_bad_delim")
 })

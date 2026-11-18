@@ -236,7 +236,7 @@ read_delim_cvr <- function(path, n = Inf) {
     # does not append `...NN` to them): a repeated contest name is resolved
     # by resolve_placeholder_cols() below, never by a column-index suffix
     raw <- switch(ext,
-      "CSV" = data.table::fread(path, colClasses = "character", header = TRUE, nrows = n),
+      "CSV" = read_csv_ragged(path, n = n),
       "XLS" = , "XLSX" = readxl::read_excel(path, col_types = "text", .name_repair = "minimal", n_max = n)
     )
     blank <- is.na(colnames(raw)) | colnames(raw) == ""
@@ -438,4 +438,61 @@ parse_contest_cols <- function(nms) {
     party = dplyr::na_if(party, ""),
     rank = rank
   )
+}
+
+#' Read a one-row-header CSV whose rows and header may differ in width
+#'
+#' Two shapes `fread()` misreads on its own, both from Ohio 2020 exports:
+#'
+#' * Ragged-right rows (Pickaway OH): a row omits its empty trailing cells,
+#'   so rows are 24 to 27 fields against a 27-field header. `fread()` sizes
+#'   the table from the first rows and stops early at the first wider row.
+#'   Read with `fill = TRUE`, short rows are padded.
+#' * A header with unquoted commas inside its names (Fayette OH): a levy
+#'   title like `Madison Township (Renewal) - Fire, .9 mill, 5 years` splits
+#'   into three header fields, so the header has 40 fields against 29 in
+#'   every row, and `fread()` took the first ballot row as the header. The
+#'   commas inside a name are followed by a space and the separators are
+#'   not, so the header is re-split on bare commas when that gives exactly
+#'   the width the rows use and the columns past it are empty.
+#'
+#' A row wider than the header is not padded into unnamed columns, which
+#' `resolve_placeholder_cols()` would read as extra seats of the last
+#' contest; it aborts with `rcvr_bad_delim`.
+#'
+#' @param path Path to a CSV.
+#' @param n Rows to read after the header.
+#'
+#' @return A `data.table` of character columns.
+#' @noRd
+read_csv_ragged <- function(path, n = Inf) {
+  raw <- data.table::fread(path, colClasses = "character", header = TRUE,
+                           nrows = n, sep = ",", fill = TRUE)
+  # the header line's own fields: fread(nrows = 0) still sizes the table
+  # from the data rows
+  line <- sub("^\ufeff", "", readLines(path, n = 1L, warn = FALSE, encoding = "UTF-8"))
+  hdr <- unlist(data.table::fread(text = line, header = FALSE, sep = ",",
+                                  colClasses = "character", fill = TRUE)[1],
+                use.names = FALSE)
+  # Rows wider than the header (Mono CA 2020: 18 to 41 fields against 34)
+  # cannot be matched to contests by position, and fread() then also fails
+  # to split the file at all, returning fewer columns than the header has.
+  if (ncol(raw) != length(hdr)) {
+    cli::cli_abort(
+      "{.file {path}}: read as {ncol(raw)} column{?s} against a {length(hdr)}-field header; rows are wider than the header, so cells cannot be matched to contests.",
+      class = "rcvr_bad_delim"
+    )
+  }
+  used <- vapply(raw, function(x) any(!is.na(x) & x != ""), logical(1))
+  width <- max(c(0L, which(used)))
+  if (width < ncol(raw)) {
+    bare <- strsplit(line, ",(?! )", perl = TRUE)[[1]]
+    if (length(bare) %in% c(width, width + 1L) && length(bare) < ncol(raw)) {
+      bare <- gsub('^"|"$', "", bare)
+      keep <- seq_len(length(bare))
+      raw <- raw[, keep, with = FALSE]
+      data.table::setnames(raw, bare)
+    }
+  }
+  raw
 }

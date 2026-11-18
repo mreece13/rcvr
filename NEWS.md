@@ -147,6 +147,19 @@ failed county rather than stopping the whole run) is a classed condition:
   not on that card; Manatee FL 2020 writes each of a voter's two cards as
   its own row, with no style to link them, and the precinct grid gave every
   second card an undervote for President (216,841 rows).
+* One-row-header CSVs are read with `fill = TRUE`. Ragged-right rows, which
+  omit their empty trailing cells, are padded (Pickaway OH 2020: 24 to 27
+  fields against a 27-field header). This replaces the `rcvr_truncated_read`
+  abort for a short row: nothing stops early, so no rows are lost, but a
+  short row is now padded at its end rather than rejected.
+* A header whose names contain unquoted commas is rebuilt by splitting on
+  commas not followed by a space, when that gives the width the rows use
+  (Fayette OH 2020: levy titles like `... - Fire, .9 mill, 5 years` made a
+  40-field header for 29-field rows, and the first ballot was read as the
+  header).
+* A CSV read with a column count different from its header's field count
+  aborts with `rcvr_bad_delim` instead of returning misaligned pairs (Mono
+  CA 2020: rows of 18 to 41 fields against a 34-field header).
 * Edge whitespace is trimmed from `contest`, `raw_candidate` and `raw_party`
   for every reader. The metadata sheet strips it on append, so a raw name
   like `"Tammy Duckworth "` (Passaic NJ 2020) could never match its own
