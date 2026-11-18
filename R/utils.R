@@ -457,3 +457,28 @@ undouble_quotes <- function(pairs) {
   }
   pairs
 }
+
+#' Trim edge whitespace from the names that key the metadata store
+#'
+#' A raw name with a leading or trailing space (`"Tammy Duckworth "`,
+#' Passaic NJ 2020) cannot round-trip through the metadata sheet, which
+#' strips edge whitespace when rows are appended, so its pair would never
+#' match its own store row and the county would stay pending. Interior
+#' whitespace is left alone.
+#'
+#' @param pairs A pairs frame.
+#'
+#' @return `pairs`, attributes kept.
+#' @keywords internal
+trim_names <- function(pairs) {
+  for (v in intersect(c("contest", "raw_candidate", "raw_party"), names(pairs))) {
+    x <- pairs[[v]]
+    if (!is.character(x)) next
+    hit <- which(x != stringr::str_trim(x))
+    if (length(hit) == 0) next
+    x[hit] <- stringr::str_trim(x[hit])
+    x[hit][x[hit] == ""] <- NA_character_
+    pairs[[v]] <- x
+  }
+  pairs
+}

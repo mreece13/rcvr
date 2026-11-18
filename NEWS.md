@@ -147,6 +147,10 @@ failed county rather than stopping the whole run) is a classed condition:
   not on that card; Manatee FL 2020 writes each of a voter's two cards as
   its own row, with no style to link them, and the precinct grid gave every
   second card an undervote for President (216,841 rows).
+* Edge whitespace is trimmed from `contest`, `raw_candidate` and `raw_party`
+  for every reader. The metadata sheet strips it on append, so a raw name
+  like `"Tammy Duckworth "` (Passaic NJ 2020) could never match its own
+  store row.
 * `read_xml_cvr()` reports progress through progressr about every 1% of
   sheet files (large Hart exports parse for hours). Nothing is shown unless
   a handler is enabled; for an `Rscript` log use

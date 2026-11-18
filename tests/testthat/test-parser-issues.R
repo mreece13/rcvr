@@ -284,3 +284,16 @@ test_that("blank cells still synthesise undervotes when the vendor writes none",
   pairs <- read_cvr(path, type = "delim")
   expect_equal(sum(pairs$raw_candidate == "undervote"), 2L)
 })
+
+test_that("edge whitespace is trimmed from contest and candidate names (Passaic NJ)", {
+  path <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c(
+    "Cast Vote Record,Precinct,US Senate ,Mayor",
+    "1,101,Tammy Duckworth ,  Ann Lee",
+    "2,101,Bob,Carl Ray"
+  ), path)
+  pairs <- read_cvr(path, type = "delim")
+  expect_true(all(c("Tammy Duckworth", "Ann Lee") %in% pairs$raw_candidate))
+  expect_true("US Senate" %in% pairs$contest)
+  expect_false(any(pairs$raw_candidate != stringr::str_trim(pairs$raw_candidate), na.rm = TRUE))
+})

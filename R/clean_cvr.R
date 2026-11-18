@@ -177,6 +177,7 @@ read_cvr <- function(path, type = NULL, state = NA_character_, county = NA_chara
   if (type %in% c("DELIM", "DELIM-MULTI", "SPECIAL")) {
     pairs <- undouble_quotes(pairs)
   }
+  pairs <- trim_names(pairs)
 
   attr(pairs, "rcvr_type") <- type
   attr(pairs, "rcvr_path") <- as.character(path)
