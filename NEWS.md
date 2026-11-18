@@ -147,6 +147,12 @@ failed county rather than stopping the whole run) is a classed condition:
   not on that card; Manatee FL 2020 writes each of a voter's two cards as
   its own row, with no style to link them, and the precinct grid gave every
   second card an undervote for President (216,841 rows).
+* `read_xml_cvr()` reports progress through progressr about every 1% of
+  sheet files (large Hart exports parse for hours). Nothing is shown unless
+  a handler is enabled; for an `Rscript` log use
+  `options(progressr.enable = TRUE); progressr::handlers(global = TRUE);
+  progressr::handlers("cli")` (progressr is off in non-interactive sessions).
+  progressr is a new import.
 
 ## Dependencies
 
