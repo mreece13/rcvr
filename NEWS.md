@@ -137,6 +137,10 @@ failed county rather than stopping the whole run) is a classed condition:
 * Dominion JSON `PrecinctPortionId` 0 is treated like -1 (no precinct, `NA`)
   instead of aborting with `rcvr_unresolved_ids`, matching `PartyId` 0
   (San Francisco CA 2024).
+* A CSV-escaped quote in a contest or candidate name (`"DEM Anthony
+  ""Tony"" Eldon"`) is read as one quote. data.table 1.18.4's `fread()`
+  returns the inner pair doubled, so the delimited and special readers keyed
+  such names differently from an Excel or JSON export (Manatee FL 2020).
 
 ## Dependencies
 

@@ -240,3 +240,17 @@ test_that("no ballot style and no precinct: no card linking, undervotes only for
   expect_equal(nrow(under), 1)
   expect_equal(under$contest, "COUNCIL")
 })
+
+test_that("a CSV-escaped quote in a name is read as one quote (Manatee FL)", {
+  path <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c(
+    "Cast Vote Record,Precinct,State Senator,\"Fire \"\"District\"\" Seat\"",
+    "1,101,\"DEM Anthony \"\"Tony\"\" Eldon\",Ann",
+    "2,101,REP Ben Smith,Bob"
+  ), path)
+  pairs <- read_cvr(path, type = "delim")
+  expect_true("DEM Anthony \"Tony\" Eldon" %in% pairs$raw_candidate)
+  expect_true("Fire \"District\" Seat" %in% pairs$contest)
+  expect_false(any(stringr::str_detect(c(pairs$raw_candidate, pairs$contest), stringr::fixed('""')), na.rm = TRUE))
+  expect_false(is.null(attr(pairs, "rcvr_magnitude")))
+})

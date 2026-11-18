@@ -431,3 +431,29 @@ assert_pairs <- function(pairs, call = rlang::caller_env()) {
 
   invisible(pairs)
 }
+
+#' Collapse CSV-escaped quotes left doubled by the reader
+#'
+#' A CSV field with a quote in it is written quoted, the inner quote doubled
+#' (RFC 4180): `"DEM Anthony ""Tony"" Eldon"`. data.table 1.18.4's `fread()`
+#' strips the outer quotes but returns the inner pair as written,
+#' `DEM Anthony ""Tony"" Eldon`, so the same candidate keys differently from
+#' an Excel or JSON export of it (Manatee FL 2020). A literal `""` inside a
+#' name is not plausible, so every `""` in the pairs frame's string columns is
+#' collapsed to `"`.
+#'
+#' @param pairs A pairs frame.
+#'
+#' @return `pairs`, attributes kept.
+#' @keywords internal
+undouble_quotes <- function(pairs) {
+  for (v in intersect(c("precinct", "contest", "raw_candidate", "raw_party"), names(pairs))) {
+    x <- pairs[[v]]
+    if (!is.character(x)) next
+    hit <- which(stringr::str_detect(x, stringr::fixed('""')))
+    if (length(hit) == 0) next
+    x[hit] <- stringr::str_replace_all(x[hit], stringr::fixed('""'), '"')
+    pairs[[v]] <- x
+  }
+  pairs
+}
