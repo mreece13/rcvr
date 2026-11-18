@@ -350,3 +350,13 @@ test_that("names that are not valid UTF-8 pass through the name clean-up unchang
   expect_equal(out$raw_candidate[2], "Ann")
   expect_equal(out$contest, c("Mayor", "Mayor"))
 })
+
+test_that("a CSV header that is not valid UTF-8 is still read (Okaloosa FL)", {
+  path <- withr::local_tempfile(fileext = ".csv")
+  con <- file(path, "wb")
+  writeBin(c(charToRaw("Cast Vote Record,Precinct,Se"), as.raw(0xf1), charToRaw("or Mayor,Council\n1,P1,Ann,Bob\n2,P1,Cal,Dee\n")), con)
+  close(con)
+  pairs <- read_cvr(path, type = "delim")
+  expect_equal(length(unique(pairs$cvr_id)), 2L)
+  expect_equal(length(unique(pairs$contest)), 2L)
+})

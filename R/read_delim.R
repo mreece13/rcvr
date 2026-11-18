@@ -470,7 +470,10 @@ read_csv_ragged <- function(path, n = Inf) {
                            nrows = n, sep = ",", fill = TRUE)
   # the header line's own fields: fread(nrows = 0) still sizes the table
   # from the data rows
-  line <- sub("^\ufeff", "", readLines(path, n = 1L, warn = FALSE, encoding = "UTF-8"))
+  line <- readLines(path, n = 1L, warn = FALSE)
+  # byte-wise: a header that is not valid UTF-8 (Okaloosa FL, Broward FL,
+  # Fort Bend TX, Collin TX 2020) makes a character-wise sub() abort
+  line <- sub("^\xef\xbb\xbf", "", line, useBytes = TRUE)
   hdr <- unlist(data.table::fread(text = line, header = FALSE, sep = ",",
                                   colClasses = "character", fill = TRUE)[1],
                 use.names = FALSE)
@@ -486,7 +489,7 @@ read_csv_ragged <- function(path, n = Inf) {
   used <- vapply(raw, function(x) any(!is.na(x) & x != ""), logical(1))
   width <- max(c(0L, which(used)))
   if (width < ncol(raw)) {
-    bare <- strsplit(line, ",(?! )", perl = TRUE)[[1]]
+    bare <- if (validUTF8(line)) strsplit(line, ",(?! )", perl = TRUE)[[1]] else character(0)
     if (length(bare) %in% c(width, width + 1L) && length(bare) < ncol(raw)) {
       bare <- gsub('^"|"$', "", bare)
       keep <- seq_len(length(bare))
