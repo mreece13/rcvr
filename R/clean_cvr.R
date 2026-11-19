@@ -172,6 +172,8 @@ read_cvr <- function(path, type = NULL, state = NA_character_, county = NA_chara
     pairs <- read_special_cvr(path, state, county)
   }
 
+  # Windows-1252 names become UTF-8 before the string clean-up below
+  pairs <- fix_encoding(pairs)
   # the delimited and special readers all go through data.table::fread(),
   # which leaves an escaped quote doubled (see undouble_quotes())
   if (type %in% c("DELIM", "DELIM-MULTI", "SPECIAL")) {

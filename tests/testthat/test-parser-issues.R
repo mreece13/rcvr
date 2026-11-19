@@ -351,6 +351,27 @@ test_that("names that are not valid UTF-8 pass through the name clean-up unchang
   expect_equal(out$contest, c("Mayor", "Mayor"))
 })
 
+test_that("names that are not valid UTF-8 are read as Windows-1252 (Bergen NJ, Collin TX)", {
+  pairs <- tibble::tibble(
+    cvr_id = 1:4, precinct = "P1", contest = "Q1",
+    raw_candidate = c("YES/S\xcd", "Timothy \x93Toby\x94 Wallis", "Ann", "B\x81b"),
+    raw_party = NA_character_, rank = NA_integer_
+  )
+  out <- fix_encoding(pairs)
+  expect_true(all(validUTF8(out$raw_candidate)))
+  expect_equal(out$raw_candidate[1:3],
+               c("YES/SÍ", "Timothy “Toby” Wallis", "Ann"))
+  expect_equal(out$raw_candidate[4], "B\u0081b")
+
+  path <- withr::local_tempfile(fileext = ".csv")
+  con <- file(path, "wb")
+  writeBin(c(charToRaw("CvrNumber,Precinct,Mayor\n1,P1,\"Jos"), as.raw(0xe9),
+             charToRaw(" \"\"Joe\"\" Morera\"\n2,P1,Ann\n")), con)
+  close(con)
+  read <- read_cvr(path, type = "delim")
+  expect_true("José \"Joe\" Morera" %in% read$raw_candidate)
+})
+
 test_that("a CSV header that is not valid UTF-8 is still read (Okaloosa FL)", {
   path <- withr::local_tempfile(fileext = ".csv")
   con <- file(path, "wb")

@@ -432,6 +432,35 @@ assert_pairs <- function(pairs, call = rlang::caller_env()) {
   invisible(pairs)
 }
 
+#' Re-encode names that are not valid UTF-8 from Windows-1252
+#'
+#' Some exports are written in Windows-1252, not UTF-8 (Bergen NJ `YES/S\xcd`,
+#' Collin TX curly quotes, Fort Bend TX en dashes, DC accented names). Read
+#' as bytes, those names are not valid UTF-8: stringr aborts on them, and the
+#' metadata sheet cannot hold them, so a store row could never match its own
+#' pair. Every string that is not valid UTF-8 is converted from Windows-1252;
+#' the five bytes that Windows-1252 leaves undefined fall back to Latin-1.
+#' Valid UTF-8 is left untouched.
+#'
+#' @param pairs A pairs frame.
+#'
+#' @return `pairs`, attributes kept.
+#' @keywords internal
+fix_encoding <- function(pairs) {
+  for (v in intersect(c("precinct", "contest", "raw_candidate", "raw_party"), names(pairs))) {
+    x <- pairs[[v]]
+    if (!is.character(x)) next
+    bad <- which(!is.na(x) & !validUTF8(x))
+    if (length(bad) == 0) next
+    out <- iconv(x[bad], from = "windows-1252", to = "UTF-8")
+    miss <- is.na(out)
+    out[miss] <- iconv(x[bad][miss], from = "latin1", to = "UTF-8")
+    x[bad] <- out
+    pairs[[v]] <- x
+  }
+  pairs
+}
+
 #' Collapse CSV-escaped quotes left doubled by the reader
 #'
 #' A CSV field with a quote in it is written quoted, the inner quote doubled
@@ -450,9 +479,8 @@ undouble_quotes <- function(pairs) {
   for (v in intersect(c("precinct", "contest", "raw_candidate", "raw_party"), names(pairs))) {
     x <- pairs[[v]]
     if (!is.character(x)) next
-    # strings that are not valid UTF-8 (Bergen NJ, Broward FL, Collin TX)
-    # are left exactly as read: stringr aborts on them, and their store keys
-    # were seeded from the unmodified bytes
+    # read_cvr() runs fix_encoding() first; anything still not valid UTF-8
+    # is skipped, because stringr aborts on it
     ok <- !is.na(x) & validUTF8(x)
     hit <- which(ok)[stringr::str_detect(x[ok], stringr::fixed('""'))]
     if (length(hit) == 0) next
