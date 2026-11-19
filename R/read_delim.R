@@ -224,7 +224,7 @@ read_delim_cvr <- function(path, n = Inf) {
   header <- if (is.null(grid)) {
     is_header(path)
   } else {
-    is_header_cell(grid[[1]][1])
+    is_header_cell(grid[[1]][1], if (ncol(grid) >= 2) grid[[2]][1] else NA_character_)
   }
   if (header) {
     raw <- header_processor(path, n = n, grid = grid)

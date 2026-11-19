@@ -207,20 +207,28 @@ is_header <- function(path) {
     rlang::check_installed("data.table", reason = "to read CSV files")
     # sep fixed: a one-field title line ("Burlington General Election 2024")
     # makes fread guess a space separator
-    d <- data.table::fread(path, nrows=1, select=1, header=FALSE, sep=",")[[1]]
+    d <- unlist(data.table::fread(path, nrows=1, header=FALSE, sep=",",
+                                  colClasses="character")[1], use.names=FALSE)
   } else if (stringr::str_detect(path, "xls$|xlsx$|XLS$|XLSX$")) {
     rlang::check_installed("readxl", reason = "to read Excel files")
-    d <- readxl::read_excel(path, range = "A1", col_names = FALSE, .name_repair = "unique_quiet") |> dplyr::pull()
+    d <- unlist(readxl::read_excel(path, range = "A1:B1", col_names = FALSE,
+                                   col_types = "text", .name_repair = "unique_quiet"),
+                use.names = FALSE)
   }
 
-  is_header_cell(d)
+  is_header_cell(d[1], d[2])
 }
 
 # if we detect the top left cell to include something like this, it's almost certainly
 # a header file. There may be a more systematic way to check for headers but this
 # works without fail on every file in the data
-is_header_cell <- function(d) {
-  isTRUE(stringr::str_detect(d, stringr::regex("202|General|November", ignore_case = TRUE)))
+#
+# A title that names none of these (Georgia 2020 recounts: "Irwin Nov 3rd
+# RECOUNT", "Lumpkin nov recount") is still recognised by the cell to its
+# right, where Dominion writes its software version ("5.5.12.1").
+is_header_cell <- function(d, d2 = NA_character_) {
+  isTRUE(stringr::str_detect(d, stringr::regex("202|General|November", ignore_case = TRUE))) ||
+    (!is.na(d) && d != "" && isTRUE(stringr::str_detect(d2, "^\\d+(\\.\\d+){2,}$")))
 }
 
 #' Process delimited files with unconventional headers. They are
@@ -298,14 +306,23 @@ header_processor <- function(path, n = Inf, grid = NULL) {
   if (grepl("^\\d+(\\.\\d+)+$", colnames(df)[1])) colnames(df)[1] <- "V1"
   vote_for <- function(x) sum(stringr::str_detect(x, stringr::fixed("(Vote For=")), na.rm = TRUE)
   first <- vapply(df, function(x) as.character(x[1]), character(1), USE.NAMES = FALSE)
-  rotated <- nrow(df) >= 2 && vote_for(colnames(df)) == 0 && vote_for(first) > 0
+  # Coos OR 2020 has the same order with an empty party row: its title line
+  # is followed by a line blank but for "dummy" in the first cell, so the
+  # names row says nothing and the contests sit in the first data row. The
+  # key names are then in the candidate row, so the key columns get
+  # placeholder contests rather than the stray first cell.
+  is_blank <- function(x) is.na(x) | x == "" | stringr::str_detect(x, rcvr_PLACEHOLDER_RE)
+  empty_names <- sum(!is_blank(colnames(df))) <= 1 && sum(!is_blank(first)) > 1
+  rotated <- nrow(df) >= 2 &&
+    ((vote_for(colnames(df)) == 0 && vote_for(first) > 0) || empty_names)
   if (rotated) {
     df <- data.table::as.data.table(df)
     second <-vapply(df, function(x) as.character(x[2]), character(1), USE.NAMES = FALSE)
     party <- colnames(df)
     is_contest <- !is.na(first) & first != ""
     party[stringr::str_detect(party, rcvr_PLACEHOLDER_RE) | party == "" | !is_contest] <- NA
-    contest <- ifelse(is_contest, first, colnames(df))
+    if (empty_names) party[] <- NA
+    contest <- ifelse(is_contest, first, if (empty_names) paste0("V", seq_along(df)) else colnames(df))
     contest <- resolve_placeholder_cols(contest, sentinel = FALSE, warn = FALSE)$names
     data.table::set(df, i = 1L, j = seq_along(df), value = as.list(second))
     data.table::set(df, i = 2L, j = seq_along(df), value = as.list(party))

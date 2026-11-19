@@ -49,3 +49,39 @@ test_that("a version number in the contest row's first cell is not a contest", {
   expect_setequal(unique(pairs$contest), "MAYOR (Vote For=1)")
   expect_setequal(unique(pairs$precinct), c("Ward 1", "Ward 2"))
 })
+
+test_that("a title naming no year is a header when the next cell is a Dominion version", {
+  f <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c(
+    '"Irwin Nov 3rd RECOUNT","5.5.12.1","","",""',
+    '"","","","MAYOR (Vote For=1)","MAYOR (Vote For=1)"',
+    '"","","","JANE DOE (Dem)","JOHN ROE (Rep)"',
+    '"CvrNumber","PrecinctPortion","BallotType","",""',
+    '="1","043-Ocilla","Ballot 3","1","0"',
+    '="2","050-Holt","Ballot 3","0","1"'
+  ), f)
+  expect_true(is_header(f))
+  pairs <- read_delim_cvr(f) |> pairs_from_delim()
+  expect_setequal(unique(pairs$contest), "MAYOR (Vote For=1)")
+  expect_setequal(unique(pairs$precinct), c("043-Ocilla", "050-Holt"))
+  expect_false(is_header_cell("CvrNumber", "TabulatorNum"))
+  expect_false(is_header_cell("", "5.5.12.1"))
+})
+
+test_that("an empty names row puts the contests in the first data row (Coos OR)", {
+  f <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c(
+    "Coos 2020,,,,",
+    "dummy,,,,",
+    ",,MAYOR,MAYOR,COUNCIL",
+    "RowNumber,BallotStyleID,JANE DOE,JOHN ROE,ANN POE",
+    "1,5,1,0,1",
+    "2,5,0,1,0"
+  ), f)
+  raw <- read_delim_cvr(f)
+  expect_equal(nrow(raw), 2)
+  expect_true(all(c("RowNumber", "ballot_style") %in% colnames(raw)))
+  pairs <- pairs_from_delim(raw)
+  expect_setequal(unique(pairs$contest), c("MAYOR", "COUNCIL"))
+  expect_setequal(unique(pairs$raw_candidate), c("JANE DOE", "JOHN ROE", "ANN POE", "undervote"))
+})
