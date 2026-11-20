@@ -228,7 +228,9 @@ read_special_ca_los_angeles <- function(path) {
     colClasses = "character",
     header = FALSE,
     skip = 1,
-    col.names = c("code", "candidate", "contest")
+    col.names = c("code", "candidate", "contest"),
+    # "NA" is a code (AUSTIN BISHOP, Palmdale council), not a missing value
+    na.strings = ""
   )
   excel <- grepl("^30{2,}$", codes$code)
   codes$code[excel] <- paste0("3E", nchar(codes$code[excel]) - 1L)
@@ -240,7 +242,8 @@ read_special_ca_los_angeles <- function(path) {
     ballot_path,
     colClasses = "character",
     header = TRUE,
-    select = "Refined Counters"
+    select = "Refined Counters",
+    na.strings = ""
   )
   marks <- strsplit(ballots[["Refined Counters"]], " : ", fixed = TRUE)
   rm(ballots)

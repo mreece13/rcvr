@@ -218,12 +218,13 @@ test_that("the CALIFORNIA LOS ANGELES reader emits the pairs contract", {
   )
   expect_setequal(pairs$contest, c("US PRESIDENT", "MAYOR"))
   expect_true(all(is.na(pairs$rank)))
-  # one row per mark: "3E3" is the code Excel wrote as 3000, "No Selection"
-  # is an undervote, and the "*" mark is dropped
+  # one row per mark: "3E3" is the code Excel wrote as 3000, "NA" is a code
+  # and not a missing value, "No Selection" is an undervote, and the "*"
+  # mark is dropped
   got <- dplyr::arrange(pairs, cvr_id, contest)
   expect_equal(got$cvr_id, c(1L, 1L, 2L, 2L, 3L, 3L))
   expect_equal(got$raw_candidate,
-               c("JANE SMITH", "JOSEPH R BIDEN", "undervote", "DONALD J TRUMP", "JOHN DOE", "undervote"))
+               c("JANE SMITH", "JOSEPH R BIDEN", "undervote", "DONALD J TRUMP", "JOHN ROE", "undervote"))
 })
 
 test_that("the CALIFORNIA LOS ANGELES reader aborts on an unresolvable code", {
