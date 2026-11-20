@@ -76,7 +76,7 @@ xml_ballot <- function(path, i) {
     contest_id <- character(0)
   }
 
-  tibble::tibble(
+  out <- tibble::tibble(
     cvr_id = rep(as.integer(i), length(contest)),
     precinct = rep(precinct, length(contest)),
     contest = stringr::str_replace_all(contest, stringr::fixed("\n"), " "),
@@ -85,14 +85,57 @@ xml_ballot <- function(path, i) {
     rank = NA_integer_,
     contest_id = contest_id
   )
+  # where the sheet sits in the scan, for hart_ballot_ids()
+  attr(out, "rcvr_sheet") <- c(
+    batch = xml_chr(x, "/*/BatchNumber"),
+    seq = xml_chr(x, "/*/BatchSequence"),
+    sheet = xml_chr(x, "/*/SheetNumber")
+  )
+  out
+}
+
+#' Link the sheets of a multi-sheet Hart ballot by scan order
+#'
+#' Hart writes one file per sheet, with no key shared by the sheets of one
+#' ballot, but each file records its `BatchNumber`, `BatchSequence` (position
+#' in the batch) and `SheetNumber`. The sheets of a ballot are scanned
+#' together, so sheet 2 sits at the sequence right after sheet 1 of the same
+#' batch (Nevada CA 2020: 60,338 of 60,363 sheet 2s; Humboldt CA: 64,226 of
+#' 64,438). A sheet joins the ballot of the sheet before it when it is in the
+#' same batch, at the next sequence and has the next sheet number; any other
+#' sheet starts a new ballot. A single-sheet export is unchanged. A sheet
+#' that lacks any of the three fields is left as its own ballot.
+#'
+#' @param sheets A data frame with one row per sheet: `i` (the sheet's
+#'   cvr_id), and character `batch`, `seq`, `sheet`.
+#'
+#' @return An integer ballot id per row of `sheets`, in the input order.
+#' @noRd
+hart_ballot_ids <- function(sheets) {
+  num <- function(x) suppressWarnings(as.integer(x))
+  out <- sheets$i
+  b <- num(sheets$batch); s <- num(sheets$seq); k <- num(sheets$sheet)
+  # a sheet without all three fields stays its own ballot
+  ok <- !is.na(b) & !is.na(s) & !is.na(k)
+  if (sum(ok) < 2) return(out)
+  idx <- which(ok)
+  o <- idx[order(b[idx], s[idx])]
+  b <- b[o]; s <- s[o]; k <- k[o]
+  n <- length(o)
+  joins <- c(FALSE, b[-1] == b[-n] & s[-1] == s[-n] + 1L & k[-1] == k[-n] + 1L & k[-1] > 1L)
+  ballot <- cumsum(!joins)
+  # a ballot keeps the cvr_id of its first sheet
+  out[o] <- sheets$i[o][!joins][ballot]
+  out
 }
 
 #' Read a directory of per-ballot XML CVRs
 #'
-#' One file per ballot sheet; the ballot's identity is its position in the
-#' sorted file listing. Hart exports write one file per *sheet* and carry no
-#' key linking the sheets of one voter's ballot, so for multi-sheet ballots
-#' `cvr_id` identifies a sheet.
+#' One file per ballot sheet; the ballot's identity is the position in the
+#' sorted file listing of its first sheet. Hart exports write one file per
+#' *sheet* and carry no key linking the sheets of one voter's ballot; they
+#' are linked by scan order (see `hart_ballot_ids()`), so a multi-sheet
+#' ballot has one `cvr_id`.
 #'
 #' @param path Path to the directory of `.xml` files.
 #'
@@ -130,15 +173,28 @@ read_xml_cvr <- function(path) {
   n <- length(files)
   step <- max(1L, n %/% 100L)
   p <- progressr::progressor(steps = ceiling(n / step))
-  raw <- purrr::imap(files, function(f, i) {
+  ballots <- purrr::imap(files, function(f, i) {
     out <- xml_ballot(f, i)
     if (i %% step == 0L || i == n) {
       p(message = sprintf("XML sheet %s of %s",
                           format(i, big.mark = ","), format(n, big.mark = ",")))
     }
     out
-  }) |>
-    purrr::list_rbind()
+  })
+  sheet_pos <- lapply(ballots, function(b) {
+    a <- attr(b, "rcvr_sheet")
+    if (is.null(a)) c(batch = NA_character_, seq = NA_character_, sheet = NA_character_) else a
+  })
+  sheets <- tibble::tibble(
+    i = seq_along(ballots),
+    batch = vapply(sheet_pos, `[[`, character(1), "batch"),
+    seq = vapply(sheet_pos, `[[`, character(1), "seq"),
+    sheet = vapply(sheet_pos, `[[`, character(1), "sheet")
+  )
+  raw <- purrr::list_rbind(ballots)
+  # the sheets of a multi-sheet ballot share one cvr_id (see hart_ballot_ids())
+  ballot_of <- hart_ballot_ids(sheets)
+  raw$cvr_id <- ballot_of[raw$cvr_id]
 
   # Hart names contests without their jurisdiction ("Mayor", "Trustee,
   # Place 1"), so different cities' contests share a <Name> and differ only
