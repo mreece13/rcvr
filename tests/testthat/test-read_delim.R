@@ -54,3 +54,33 @@ test_that("read_delim_multi_cvr aborts with a classed condition on a directory w
     class = "rcvr_no_files"
   )
 })
+
+test_that("a tab-separated .csv is split on tabs (Walton FL)", {
+  f <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c(
+    "CVRNumber\tPrecinct\tPresident (100000)\tRep in Congress, Dist 1 (140010)",
+    "1\t520-Santa Rosa Beach\tREP Donald J. Trump (74773)\tREP Matt Gaetz (74334)",
+    "2\t510-Miramar Beach\tDEM Joseph R. Biden (74772)\tundervote"
+  ), f)
+  pairs <- read_delim_cvr(f) |> pairs_from_delim()
+  expect_setequal(unique(pairs$contest), c("President (100000)", "Rep in Congress, Dist 1 (140010)"))
+  expect_setequal(unique(pairs$precinct), c("520-Santa Rosa Beach", "510-Miramar Beach"))
+})
+
+test_that("an unquoted comma and space inside a name stays in the name (Ross OH)", {
+  f <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c(
+    "Cast Vote Record,Precinct,For Sheriff,For Levy,",
+    "1,8 Chillicothe 2-D,Rep George W. Lavender, Jr. (71GLAVENDER71),For the Tax Levy,",
+    "2,24 Buckskin,undervote,Against the Tax Levy,"
+  ), f)
+  pairs <- read_delim_cvr(f) |> pairs_from_delim()
+  expect_setequal(unique(pairs$contest), c("For Sheriff", "For Levy"))
+  expect_true("Rep George W. Lavender, Jr. (71GLAVENDER71)" %in% pairs$raw_candidate)
+})
+
+test_that("rows wider than the header with no comma and space to blame still abort", {
+  f <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c("A,B,C", "1,x,y,z", "2,x,y,z"), f)
+  expect_error(read_delim_cvr(f), class = "rcvr_bad_delim")
+})

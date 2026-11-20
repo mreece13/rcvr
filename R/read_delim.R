@@ -466,20 +466,33 @@ parse_contest_cols <- function(nms) {
 #' @return A `data.table` of character columns.
 #' @noRd
 read_csv_ragged <- function(path, n = Inf) {
-  raw <- data.table::fread(path, colClasses = "character", header = TRUE,
-                           nrows = n, sep = ",", fill = TRUE)
   # the header line's own fields: fread(nrows = 0) still sizes the table
   # from the data rows
   line <- readLines(path, n = 1L, warn = FALSE)
   # byte-wise: a header that is not valid UTF-8 (Okaloosa FL, Broward FL,
   # Fort Bend TX, Collin TX 2020) makes a character-wise sub() abort
   line <- sub("^\xef\xbb\xbf", "", line, useBytes = TRUE)
-  hdr <- unlist(data.table::fread(text = line, header = FALSE, sep = ",",
+  # Walton FL 2020 is tab-separated despite its .csv name (and has commas
+  # inside contest names): a header with more tabs than commas is split on tabs
+  n_in <- function(ch) lengths(regmatches(line, gregexpr(ch, line, fixed = TRUE, useBytes = TRUE)))
+  sep <- if (n_in("\t") > n_in(",")) "\t" else ","
+  raw <- data.table::fread(path, colClasses = "character", header = TRUE,
+                           nrows = n, sep = sep, fill = TRUE)
+  hdr <- unlist(data.table::fread(text = line, header = FALSE, sep = sep,
                                   colClasses = "character", fill = TRUE)[1],
                 use.names = FALSE)
   # Rows wider than the header (Mono CA 2020: 18 to 41 fields against 34)
   # cannot be matched to contests by position, and fread() then also fails
   # to split the file at all, returning fewer columns than the header has.
+  # Unquoted commas inside candidate names (Ross OH 2020: "Rep George W.
+  # Lavender, Jr. (71GLAVENDER71)") make rows wider than the header in the
+  # same way. As for the Fayette header below, a comma inside a name is
+  # followed by a space and a separator is not: the rows are read again with
+  # each ", " protected, and that read is kept only if it fits the header.
+  if (ncol(raw) != length(hdr) && sep == ",") {
+    fixed <- read_protecting_comma_space(path, n, length(hdr))
+    if (!is.null(fixed)) raw <- fixed
+  }
   if (ncol(raw) != length(hdr)) {
     cli::cli_abort(
       "{.file {path}}: read as {ncol(raw)} column{?s} against a {length(hdr)}-field header; rows are wider than the header, so cells cannot be matched to contests.",
@@ -488,7 +501,7 @@ read_csv_ragged <- function(path, n = Inf) {
   }
   used <- vapply(raw, function(x) any(!is.na(x) & x != ""), logical(1))
   width <- max(c(0L, which(used)))
-  if (width < ncol(raw)) {
+  if (width < ncol(raw) && sep == ",") {
     bare <- if (validUTF8(line)) strsplit(line, ",(?! )", perl = TRUE)[[1]] else character(0)
     if (length(bare) %in% c(width, width + 1L) && length(bare) < ncol(raw)) {
       bare <- gsub('^"|"$', "", bare)
@@ -497,5 +510,26 @@ read_csv_ragged <- function(path, n = Inf) {
       data.table::setnames(raw, bare)
     }
   }
+  raw
+}
+
+# Read a CSV with every ", " inside a cell kept as text, for
+# read_csv_ragged(). Returns NULL unless the result is exactly `width`
+# columns wide.
+read_protecting_comma_space <- function(path, n, width) {
+  lines <- readLines(path, n = if (is.finite(n)) n + 1L else -1L, warn = FALSE)
+  lines[1] <- sub("^\xef\xbb\xbf", "", lines[1], useBytes = TRUE)
+  mark <- "\x01"
+  if (any(grepl(mark, lines, fixed = TRUE, useBytes = TRUE))) return(NULL)
+  lines <- gsub(", ", paste0(mark, " "), lines, fixed = TRUE, useBytes = TRUE)
+  raw <- tryCatch(
+    data.table::fread(text = lines, colClasses = "character", header = TRUE,
+                      sep = ",", fill = TRUE),
+    error = function(e) NULL
+  )
+  if (is.null(raw) || ncol(raw) != width) return(NULL)
+  undo <- function(x) gsub(mark, ",", x, fixed = TRUE, useBytes = TRUE)
+  for (j in seq_along(raw)) data.table::set(raw, j = j, value = undo(raw[[j]]))
+  data.table::setnames(raw, undo(names(raw)))
   raw
 }

@@ -1,5 +1,7 @@
-Header row skipped by read_special_ca_los_angeles()
+code,name,name
 1,JOSEPH R BIDEN,US PRESIDENT
 2,DONALD J TRUMP,US PRESIDENT
-3,JANE SMITH,MAYOR
-4,JOHN DOE,MAYOR
+3,No Selection,US PRESIDENT
+3A,JANE SMITH,MAYOR
+3B,JOHN DOE,MAYOR
+3000,No Selection,MAYOR

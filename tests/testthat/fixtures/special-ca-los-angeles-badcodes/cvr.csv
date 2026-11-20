@@ -1,4 +1,3 @@
-CVRNumber,PrecinctPortion,Code
-1,0012001A,1
-1,0012001A,99
-2,0012002B,2
+Tally_ID,Ballot_ID,BallotType,BoxNumber,TimeStamp,Refined Counters
+t1,J1,VBM,41,2020-10-30 23:41:01.0000000,1 : 99
+t2,J2,VBM,41,2020-10-30 23:41:02.0000000,2 : 3A

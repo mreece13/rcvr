@@ -200,56 +200,59 @@ read_special_tx_montgomery <- function(path) {
 }
 
 # CALIFORNIA | LOS ANGELES
-# a separate code table (CandidateCodes.csv: code, candidate, contest) joined
-# against a ballot file of cast marks. Ported from cvrs
-# code/function_contests.R:70-78, which only ever reads CandidateCodes.csv to
-# list distinct contests for manual classification (process_special() has no
-# reading branch for this county, same gap as Montgomery) — so the ballot
-# file's own row shape is not confirmed by any source in `cvrs`.
+# One row per ballot card (`Ballot_ID` is unique to a card, so cvr_id is a
+# card, not a voter), with every mark on the card packed into one
+# `Refined Counters` cell as candidate codes joined by " : ". The codes
+# resolve against CandidateCodes.csv (code, candidate, contest). Each contest
+# has its own "No Selection" code (one per seat), so an unmarked contest is
+# already on the card and no undervotes are filled in. No precinct column.
 #
-# Design decision: since CandidateCodes.csv supplies the contest for a code
-# (the source's own read of that file selects `contest` as the third
-# column), and the task brief describes the join as "code -> (candidate,
-# contest)" rather than "code -> candidate", the ballot file is read as one
-# row per cast mark with only a ballot id, a precinct, and a code column
-# (`CVRNumber`, `PrecinctPortion`, `Code`) -- the contest itself comes from
-# the code table, not from the ballot file. A ballot that omits a contest
-# entirely (no code row for it) is completed to "undervote" the same way as
-# every other one-row-per-mark special reader.
+# CandidateCodes.csv went through Excel: codes "3E2" ... "3E9" were stored as
+# 300 ... 3000000000, and are written back. A "*" mark (about 1 in 30,000
+# ballots) has no code and no contest, so it is dropped.
 read_special_ca_los_angeles <- function(path) {
   dir <- if (fs::is_dir(path)) path else fs::path_dir(path)
   ballot_path <- if (fs::is_dir(path)) {
-    # `list.files()` has no `perl=` argument (unlike `grepl()`), so a
-    # negative-lookahead `pattern=` here would error the moment this branch
-    # actually ran — list every .csv and drop the codes file by basename
-    # instead.
     csvs <- list.files(path, pattern = "\\.csv$", full.names = TRUE)
     csvs[basename(csvs) != "CandidateCodes.csv"]
   } else {
     path
   }
-  codes_path <- fs::path(dir, "CandidateCodes.csv")
+  if (length(ballot_path) != 1) {
+    cli::cli_abort("Expected one ballot file beside {.file CandidateCodes.csv} in {.file {dir}}.",
+                   class = "rcvr_no_files")
+  }
 
   codes <- data.table::fread(
-    codes_path,
+    fs::path(dir, "CandidateCodes.csv"),
     colClasses = "character",
     header = FALSE,
     skip = 1,
     col.names = c("code", "candidate", "contest")
-  ) |>
-    tibble::as_tibble()
+  )
+  excel <- grepl("^30{2,}$", codes$code)
+  codes$code[excel] <- paste0("3E", nchar(codes$code[excel]) - 1L)
+  if (anyDuplicated(codes$code)) {
+    cli::cli_abort("{.file CandidateCodes.csv} repeats a code.", class = "rcvr_bad_delim")
+  }
 
   ballots <- data.table::fread(
     ballot_path,
     colClasses = "character",
-    header = TRUE
-  ) |>
-    tibble::as_tibble() |>
-    dplyr::rename(cvr_id = CVRNumber, precinct = PrecinctPortion, code = Code)
+    header = TRUE,
+    select = "Refined Counters"
+  )
+  marks <- strsplit(ballots[["Refined Counters"]], " : ", fixed = TRUE)
+  rm(ballots)
+  long <- data.table::data.table(
+    cvr_id = rep.int(seq_along(marks), lengths(marks)),
+    code = trimws(unlist(marks, use.names = FALSE))
+  )
+  rm(marks)
+  long <- long[code != "" & code != "*"]
 
-  joined <- dplyr::left_join(ballots, codes, dplyr::join_by(code))
-
-  unresolved <- dplyr::filter(joined, is.na(contest))
+  joined <- codes[long, on = "code"]
+  unresolved <- joined[is.na(contest)]
   if (nrow(unresolved) > 0) {
     ids <- unique(unresolved$code)
     cli::cli_abort(
@@ -264,19 +267,15 @@ read_special_ca_los_angeles <- function(path) {
     )
   }
 
-  joined |>
-    dplyr::transmute(
-      cvr_id = as.integer(cvr_id),
-      precinct = precinct,
-      contest = contest,
-      raw_candidate = stringr::str_squish(candidate)
-    ) |>
-    complete_undervotes() |>
-    dplyr::mutate(
-      raw_party = NA_character_,
-      rank = NA_integer_
-    ) |>
-    dplyr::select(cvr_id, precinct, contest, raw_candidate, raw_party, rank)
+  cand <- stringr::str_squish(joined$candidate)
+  tibble::tibble(
+    cvr_id = joined$cvr_id,
+    precinct = NA_character_,
+    contest = joined$contest,
+    raw_candidate = dplyr::if_else(cand == "No Selection", "undervote", cand),
+    raw_party = NA_character_,
+    rank = NA_integer_
+  )
 }
 
 #' Registered readers for counties whose CVR format fits no general parser
