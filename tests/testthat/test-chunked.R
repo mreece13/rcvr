@@ -108,3 +108,19 @@ test_that("one card with every contest does not block linking (Pueblo CO 2022)",
   pairs <- suppressWarnings(pairs_from_delim(raw))
   expect_equal(length(unique(pairs$cvr_id)), n + 2L)
 })
+
+test_that("marks written with their mark density are read by the leading 0/1 (Alameda CA 2020)", {
+  path <- write_csv_lines(c(
+    '"CF November 3 2020 General Election","5.10.50.85",,,',
+    '"CvrNumber","PrecinctPortion","BallotType","President (Vote For=1)","President (Vote For=1)"',
+    '"","","","BIDEN","TRUMP"',
+    '"","","","DEM","REP"',
+    '="1","P1","1","1 (96%)","0 (0%)"',
+    '="2","P1","1","0 (35%)","1 (100%)"',
+    '="3","P1","1","0 (0%)","0 (0%)"'
+  ))
+  pairs <- whole(path)
+  expect_equal(pairs$cvr_id, 1:3)
+  expect_equal(pairs$raw_candidate, c("BIDEN", "TRUMP", "undervote"))
+  expect_same_pairs(path)
+})

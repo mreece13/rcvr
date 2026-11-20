@@ -86,6 +86,11 @@ delim_cells <- function(raw, layout, offset = 0L) {
     f <- logical(n)
     for (k in groups[[g]]) {
       x <- chr(raw[[layout$value_cols[k]]])
+      # Alameda CA 2020 writes each Dominion mark with its mark density:
+      # "1 (96%)" for a vote, "0 (0%)" or "0 (35%)" for a position not
+      # voted. Only the leading 0/1 is the mark.
+      pct <- which(endsWith(x, "%)"))
+      if (length(pct) > 0) x[pct] <- sub("^\\s*([01])\\s*\\(\\d+(\\.\\d+)?%\\)\\s*$", "\\1", x[pct])
       nb <- !is.na(x) & x != ""
       zero <- nb & x == "0"
       f <- f | nb
